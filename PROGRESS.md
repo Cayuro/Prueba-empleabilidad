@@ -20,6 +20,7 @@
 | **Fase 7 — Hardening RLS, Gemini AI & Diagnóstico** | `core_team` | 🟢 Completado | 100% | Rol `rw_app` con `NOBYPASSRLS`, vista `rw_vw_user_conversations` sincronizada con alias completos, guardas de WebSocket JWT, 12/12 pruebas E2E superadas. |
 | **Fase 8 — Interfaz WhatsApp, Invitaciones & Supervisión** | `core_team` | 🟢 Completado | 100% | UI WhatsApp con burbujas/checks, de-duplicación atómica WebSocket/REST, modal de invitación a canales privados, RLS admin global `rw_fn_is_admin`, decisiones D-16 a D-21 en `DECISIONS.md`. |
 | **Fase 9 — Seguridad Adversarial, A11y & Auditoría** | `core_team` | 🟢 Completado | 100% | 38/38 tests pasando en suite maestra (`run_all_security_and_qa.sh`), Anti-Prompt-Injection, interceptor de refresh 401 silencioso, OpenAPI y Postman exportados, decisiones D-22 a D-25. |
+| **Fase 10 — Auto-Seeding, Paginación Keyset & Responsive Móvil** | `core_team` | 🟢 Completado | 100% | Auto-seeding en `0002_seed.sql`, función `rw_fn_get_users`, invitación de miembros en creación y chat, firma polimórfica en `api.getMessages`, soporte responsive móvil integral, decisiones D-26 a D-29. |
 
 ---
 
