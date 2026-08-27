@@ -33,13 +33,17 @@ Hay dos formas naturales de representar un borrado lógico: un campo booleano (`
 Ambos campos coexisten en las tablas que soportan borrado lógico, enlazados por un CHECK constraint que la DB enforcea:
 
 ```sql
-CONSTRAINT chk_rw_users_active    CHECK (rw_is_active = (rw_deleted_at IS NULL))
-CONSTRAINT chk_rw_channels_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
-CONSTRAINT chk_rw_messages_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_users_active           CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_channels_active        CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_channel_members_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_messages_active        CHECK (rw_is_active = (rw_deleted_at IS NULL))
 ```
 
 **Alternativa descartada:**  
 Solo `rw_deleted_at`, eliminando `rw_is_active`.
+
+**Alcance:**  
+Aplica a `rw_users`, `rw_channels`, `rw_channel_members` y `rw_messages`. `rw_channel_members` tiene soft delete porque la salida o remoción de un miembro debe preservar el historial de quién perteneció al canal y cuándo.
 
 **Razón:**  
 `rw_is_active` es más eficiente para índices parciales (`WHERE rw_is_active = TRUE`) y para políticas RLS con comparaciones booleanas directas. `rw_deleted_at` aporta el timestamp exacto de la operación para auditoría. El riesgo de divergencia entre ambos se elimina con el CHECK: cualquier `UPDATE` que los desincronice produce un error de constraint antes de persistirse. La consistencia la enforcea el motor, no el desarrollador.
@@ -53,6 +57,14 @@ En todo el código, el borrado lógico siempre hace ambas actualizaciones:
 UPDATE ... SET rw_deleted_at = NOW(), rw_is_active = FALSE WHERE ...
 ```
 Si solo se actualiza uno de los dos, la DB rechaza la operación.
+
+`rw_channel_members` agrega los campos:
+```sql
+rw_is_active   BOOLEAN NOT NULL DEFAULT TRUE
+rw_deleted_at  TIMESTAMPTZ NULL
+CONSTRAINT chk_rw_channel_members_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
+```
+Cuando un usuario abandona o es removido de un canal: soft delete en `rw_channel_members`. Las políticas RLS de `rw_channels` y `rw_messages` que verifican membresía deben filtrar por `rw_channel_members.rw_is_active = TRUE`.
 
 ---
 
@@ -174,7 +186,20 @@ Tokens de 1 hora o más, o tokens sin expiración.
 15 minutos limita la ventana de exposición si un token es interceptado o filtrado en logs. El refresh token rota en cada uso: al usarlo para obtener un nuevo par, el token anterior queda marcado como `rw_is_revoked = TRUE`. Si un atacante intenta reutilizar un refresh token ya rotado, el sistema lo detecta porque el token usado ya está revocado, indicando posible compromiso.
 
 **Consecuencia:**  
-El cliente debe implementar lógica de renovación automática antes de los 15 minutos o al recibir un `401`. El backend no necesita un endpoint de logout con invalidación activa; el token expira naturalmente.
+El cliente renueva el access token automáticamente antes de los 15 minutos o al recibir un `401`.
+
+**Logout activo — `POST /api/auth/logout`:**  
+El logout sí requiere un endpoint explícito. Con refresh tokens rotativos, un token robado después del logout seguiría siendo válido indefinidamente si no se revoca. El flujo es:
+
+```
+1. Cliente envía POST /api/auth/logout con el refresh_token en el body.
+2. Backend busca el token por hash en rw_refresh_tokens.
+3. UPDATE rw_refresh_tokens SET rw_is_revoked = TRUE WHERE rw_token_hash = hash(token).
+4. El access token expira naturalmente en 15 minutos (ventana de exposición aceptable para MVP).
+5. Si el cliente intenta usar el refresh_token revocado: 401 Unauthorized.
+```
+
+El access token no puede ser invalidado antes de su expiración (naturaleza stateless de JWT). La ventana de 15 minutos es aceptable para MVP. Si en el futuro se necesita invalidación inmediata del access token, se implementa una blocklist en memoria (Redis). Por ahora revocar el refresh token es suficiente.
 
 ---
 
@@ -317,9 +342,10 @@ Estos constraints actúan antes de persistir cualquier fila. El backend no puede
 
 **Coherencia de borrado lógico (D-02):**
 ```sql
-CONSTRAINT chk_rw_users_active    CHECK (rw_is_active = (rw_deleted_at IS NULL))
-CONSTRAINT chk_rw_channels_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
-CONSTRAINT chk_rw_messages_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_users_active           CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_channels_active        CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_channel_members_active CHECK (rw_is_active = (rw_deleted_at IS NULL))
+CONSTRAINT chk_rw_messages_active        CHECK (rw_is_active = (rw_deleted_at IS NULL))
 ```
 
 **Validación de dominio:**
@@ -408,7 +434,53 @@ WITH CHECK (
 );
 ```
 
-**`rw_users` — UPDATE:**
+**`rw_channels` — UPDATE:**
+```sql
+CREATE POLICY rw_channels_update ON rw_channels FOR UPDATE TO rw_app
+USING (
+    rw_created_by = current_setting('app.current_user_id')::uuid
+    OR EXISTS (
+        SELECT 1 FROM rw_channel_members
+        WHERE rw_channel_id = rw_channels.rw_id
+          AND rw_user_id = current_setting('app.current_user_id')::uuid
+          AND rw_role = 'admin'
+          AND rw_is_active = TRUE
+    )
+);
+```
+
+**`rw_channel_members` — INSERT y soft delete (UPDATE):**
+```sql
+-- Membresías: INSERT controlado por admins del canal o por el propio usuario (canales públicos)
+CREATE POLICY rw_channel_members_insert ON rw_channel_members FOR INSERT TO rw_app
+WITH CHECK (
+    rw_channel_id IN (
+        SELECT rw_id FROM rw_channels WHERE rw_is_private = FALSE
+    )
+    OR EXISTS (
+        SELECT 1 FROM rw_channel_members cm
+        WHERE cm.rw_channel_id = rw_channel_members.rw_channel_id
+          AND cm.rw_user_id = current_setting('app.current_user_id')::uuid
+          AND cm.rw_role = 'admin'
+          AND cm.rw_is_active = TRUE
+    )
+);
+-- El UPDATE en channel_members solo se usa para soft delete
+-- Solo el propio usuario puede salir, solo un admin puede remover a otro
+CREATE POLICY rw_channel_members_update ON rw_channel_members FOR UPDATE TO rw_app
+USING (
+    rw_user_id = current_setting('app.current_user_id')::uuid
+    OR EXISTS (
+        SELECT 1 FROM rw_channel_members cm
+        WHERE cm.rw_channel_id = rw_channel_members.rw_channel_id
+          AND cm.rw_user_id = current_setting('app.current_user_id')::uuid
+          AND cm.rw_role = 'admin'
+          AND cm.rw_is_active = TRUE
+    )
+);
+```
+
+**`rw_users` — UPDATE (RLS, sin INSERT directo según D-09):**
 ```sql
 CREATE POLICY rw_users_update ON rw_users FOR UPDATE TO rw_app
 USING (
@@ -417,10 +489,13 @@ USING (
         SELECT 1 FROM rw_users
         WHERE rw_id = current_setting('app.current_user_id')::uuid
           AND rw_role = 'admin'
+          AND rw_deleted_at IS NULL
     )
 );
--- Solo el propio usuario o un admin puede modificar un usuario
+-- Solo el propio usuario o un admin activo puede modificar un usuario
 ```
+
+> **Reconciliación con D-09:** Las tablas marcadas como `controlado` en la matriz (`rw_users INSERT`, `rw_copilot_usage INSERT`) no tienen política RLS de INSERT porque `rw_app` no tiene el privilege de INSERT directo en esas tablas. Las operaciones pasan por stored procedures SECURITY DEFINER.
 
 ---
 
@@ -489,4 +564,186 @@ Estos tests prueban las cuatro capas sin ejecutar el backend:
 
 **Consecuencia:**  
 El backend puede simplificarse a su mínima expresión: abrir transacción, propagar `app.current_user_id`, ejecutar la query o stored procedure, cerrar transacción. PostgreSQL hace el resto.
+
+
+---
+
+## D-14 — WebSocket con STOMP para mensajería en tiempo real
+
+**Contexto:**  
+La mensajería interna debe ser sincrónica: cuando un usuario envía un mensaje, los demás miembros del canal deben recibirlo sin necesidad de recargar ni hacer polling. El backend ya expone REST para historial y CRUD; se necesita un canal persistente para entrega en tiempo real.
+
+**Decisión:**  
+Spring Boot + STOMP sobre WebSocket (`spring-websocket` + `spring-messaging`).
+
+- Los clientes se conectan una sola vez y mantienen la conexión abierta.
+- Se suscriben a topics por canal: `/topic/channels/{channelId}`.
+- Cuando un mensaje se inserta exitosamente vía `POST /api/channels/{id}/messages`, el backend lo publica al topic correspondiente.
+- Los suscriptores autorizados lo reciben en tiempo real sin nueva request HTTP.
+
+**Alternativas descartadas:**
+
+| Alternativa | Razón del descarte |
+|---|---|
+| Polling periódico (REST cada N segundos) | Latencia artificial, carga innecesaria en DB, no es tiempo real. |
+| Server-Sent Events (SSE) | Unidireccional del servidor al cliente. No soporta el protocolo de subscripción por canal de forma natural. |
+| WebSocket puro sin STOMP | Requiere protocolo custom de routing, subscripción y error handling. STOMP ya resuelve eso y Spring Boot lo soporta nativamente. |
+
+**Razón:**  
+STOMP es un protocolo ligero de mensajería sobre WebSocket con soporte nativo en Spring Boot (`@MessageMapping`, `SimpMessagingTemplate`). Su modelo de topics (`/topic/...`) se alinea naturalmente con el concepto de canales del sistema. La integración con el flujo REST existente es mínima: un solo `messagingTemplate.convertAndSend(...)` después del INSERT exitoso.
+
+---
+
+### Arquitectura WebSocket
+
+```
+Cliente A (miembro del canal)           Cliente B (miembro del canal)
+        |                                       |
+        |-- HTTP Handshake + JWT ---------> Spring WebSocket Endpoint
+        |<-- Upgrade: websocket -----------|
+        |                                       |
+        |-- SUBSCRIBE /topic/channels/X ---|   |-- SUBSCRIBE /topic/channels/X
+        |                                       |
+        |-- POST /api/channels/X/messages  |   |
+              (REST, con JWT)                   |
+                    |                           |
+              [Spring inserta en DB]            |
+                    |                           |
+              [SimpMessagingTemplate]           |
+                    |-- broadcast /topic/channels/X --> Cliente A y Cliente B
+```
+
+---
+
+### Seguridad en WebSocket
+
+**Autenticación — una sola vez en el handshake:**
+```java
+// ChannelInterceptor valida el JWT en el frame CONNECT
+// El user_id queda almacenado en el Principal del WebSocket session
+// No se valida en cada mensaje — el handshake ya autenticó
+```
+
+**Autorización — al momento de la suscripción:**
+```java
+// Al recibir SUBSCRIBE /topic/channels/{channelId}
+// Verificar que el user_id (del Principal) es miembro del canal
+// Si no es miembro: lanzar excepción → cliente recibe error y no se suscribe
+// La DB sigue siendo la fuente de verdad para esta verificación
+```
+
+**Invariante de seguridad:**  
+Un usuario que es expulsado de un canal no recibe mensajes nuevos porque su suscripción se invalida. Los mensajes históricos siguen protegidos por RLS en las queries REST.
+
+---
+
+### Coexistencia REST + WebSocket
+
+| Operación | Canal | Razón |
+|---|---|---|
+| Cargar historial de mensajes | REST + Keyset Pagination | El historial no es tiempo real; keyset garantiza orden y eficiencia. |
+| Enviar un mensaje | REST `POST /api/channels/{id}/messages` | El INSERT a la DB debe ser transaccional y pasar por RLS. |
+| Recibir mensajes nuevos | WebSocket STOMP topic | Entrega en tiempo real sin polling. |
+| Buscar mensajes | REST `GET /api/messages/search` | Full-text search con `ts_headline` es una query puntual. |
+| Consultar Copiloto | REST `POST /api/copilot/query` | El flujo RAG es síncrono por naturaleza (embedding → DB → LLM). |
+
+**Flujo de envío completo:**
+1. Cliente envía `POST /api/channels/{id}/messages` con JWT.
+2. Backend valida JWT, abre transacción, llama `SET LOCAL app.current_user_id`.
+3. DB inserta en `rw_messages` bajo RLS (INSERT policy verifica membresía y autoría).
+4. Si el INSERT es exitoso: `messagingTemplate.convertAndSend("/topic/channels/{id}", messageDto)`.
+5. Todos los clientes suscritos al topic reciben el mensaje inmediatamente.
+6. Si el INSERT falla: no se publica nada. El cliente recibe el error HTTP.
+
+---
+
+### Cambios en el frontend (React)
+
+- Conectar con `@stomp/stompjs` + `sockjs-client` en el montaje del componente de conversación.
+- El JWT se envía en el header del handshake, no en cada mensaje.
+- Al recibir un mensaje por WebSocket, se agrega directamente al estado local sin recargar historial.
+- Si la conexión se pierde: mostrar indicador de reconexión y reintentar con backoff.
+
+**Estados de conexión WebSocket en UI:**
+
+| Estado | Visualización |
+|---|---|
+| `CONNECTING` | Indicador de carga discreta |
+| `CONNECTED` | Normal — mensajes en tiempo real |
+| `DISCONNECTED` | Banner de advertencia + botón de reintentar |
+| `ERROR` | Mensaje de error + fallback a polling manual |
+
+**Consecuencia:**  
+El MVP tiene mensajería en tiempo real con una conexión persistente por pestaña del navegador. La adición al backend es mínima: un endpoint de WebSocket, un interceptor de JWT, un interceptor de suscripción, y un `convertAndSend` tras cada INSERT exitoso.
+
+
+---
+
+## D-15 — `EmbeddingProvider` como interfaz separada de `AiProvider`
+
+**Contexto:**  
+El sistema necesita dos capacidades de IA distintas: generar embeddings vectoriales de texto (para indexar mensajes y queries) y generar respuestas de lenguaje natural (para el copiloto). Actualmente D-11 documenta `AiProvider` para completions. La pregunta es si la generación de embeddings debe ser parte de esa misma interfaz o una separada.
+
+**Decisión:**  
+Dos interfaces independientes e intercambiables:
+
+```java
+// Genera vectores numéricos a partir de texto
+// Implementaciones: OpenAiEmbeddingProvider, MockEmbeddingProvider
+public interface EmbeddingProvider {
+    float[] embed(String text);
+}
+
+// Genera respuestas de lenguaje natural con contexto
+// Implementaciones: OpenAiProvider, AnthropicProvider, MockAiProvider
+public interface AiProvider {
+    String generateCompletion(String systemPrompt, String context, String query);
+}
+```
+
+**Alternativa descartada:**  
+Un único `AiProvider` con ambos métodos: `embed(text)` y `generateCompletion(...)`.
+
+**Razón:**  
+
+| Dimensión | `AiProvider` (completions) | `EmbeddingProvider` |
+|---|---|---|
+| **Costo por llamada** | Alto (tokens de entrada y salida) | Bajo (solo tokens de entrada) |
+| **Velocidad** | Lenta (streaming opcional) | Rápida (respuesta directa) |
+| **Determinismo** | No determinístico (temperatura) | Determinístico para el mismo texto |
+| **Caché viable** | No (respuestas únicas por contexto) | Sí (mismo texto → mismo vector) |
+| **Modelo típico** | GPT-4, Claude, Gemini Pro | text-embedding-ada-002, sentence-transformers |
+
+Estos perfiles son tan distintos que en producción es común usar proveedores diferentes: embeddings con `text-embedding-ada-002` de OpenAI (barato y estable) y completions con Claude o Gemini (mejor razonamiento). Si la interfaz es única, cambiar el modelo de embeddings obliga a tocar la lógica de completions y viceversa. Fusionarlas violaría el principio de segregación de interfaces (SOLID-ISP).
+
+Adicionalmente, el ciclo de vida de cada una es distinto:
+- Los embeddings se generan al **insertar mensajes** (en el flujo de escritura, fuera de la transacción principal).
+- Las completions se generan solo al **consultar el copiloto** (en el flujo de lectura autorizada).
+
+Mantenerlas separadas permite:
+- **Mock independiente en tests:** el test del flujo RAG puede usar `MockEmbeddingProvider` sin afectar la validación del `MockAiProvider`.
+- **Swap independiente en producción:** cambiar de `text-embedding-ada-002` a un modelo local no toca nada de la lógica del copiloto.
+
+---
+
+### Tres interfaces del ecosistema de IA
+
+El sistema tiene tres interfaces distintas en la capa de infraestructura de IA:
+
+| Interface | Responsabilidad | Consumida por |
+|---|---|---|
+| `EmbeddingProvider` | Generar `float[]` a partir de texto | `EmbeddingService` al insertar/editar mensajes |
+| `EmbeddingRepository` | Almacenar y consultar vectores en el vector store | `EmbeddingService` (escritura) y copilot use case (lectura) |
+| `AiProvider` | Generar texto de respuesta con contexto | Copilot use case tras obtener mensajes autorizados de la DB |
+
+`EmbeddingProvider` y `EmbeddingRepository` son independientes: el primero es el motor que crea el vector, el segundo es el almacén donde vive. Esto permite usar pgvector como store con OpenAI como motor, o Qdrant como store con sentence-transformers como motor.
+
+---
+
+**Consecuencia:**  
+El backend tiene cuatro componentes de infraestructura intercambiables de forma independiente:
+1. `EmbeddingProvider` — seleccionado por variable de entorno `EMBEDDING_PROVIDER`.
+2. `EmbeddingRepository` — implementación con pgvector para MVP.
+3. `AiProvider` — seleccionado por variable de entorno `AI_PROVIDER`.
+4. `VectorStore` — abstracción del motor de búsqueda vectorial (coincide con `EmbeddingRepository` en MVP).
 
