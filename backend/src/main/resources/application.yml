@@ -5,9 +5,9 @@ spring:
   application:
     name: riwi-messaging-backend
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_riwi_alpha}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_juan_gomez_hamilton}
     username: ${DB_APP_USER:${DB_USER:rw_app}}
-    password: ${DB_APP_PASSWORD:${DB_PASSWORD:changeme}}
+    password: ${DB_APP_PASSWORD:${DB_PASSWORD:rw_app_secure_pwd_2026!}}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -22,13 +22,12 @@ jwt:
   refresh-expiration-days: ${REFRESH_TOKEN_EXPIRY_DAYS:30}
 
 ai:
-  provider: ${AI_PROVIDER:mock}
-  openai:
-    api-key: ${OPENAI_API_KEY:}
-    model: ${OPENAI_MODEL:gpt-4o}
+  provider: ${AI_PROVIDER:gemini}
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-1.5-flash}
   embedding:
     provider: ${EMBEDDING_PROVIDER:mock}
-    model: ${OPENAI_EMBEDDING_MODEL:text-embedding-ada-002}
 
 copilot:
   system-prompt-version: ${SYSTEM_PROMPT_VERSION:1}

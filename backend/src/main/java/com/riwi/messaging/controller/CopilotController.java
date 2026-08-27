@@ -5,6 +5,7 @@ import com.riwi.messaging.exception.ApiException;
 import com.riwi.messaging.rag.AiProvider;
 import com.riwi.messaging.rag.EmbeddingProvider;
 import com.riwi.messaging.rag.EmbeddingRepository;
+import com.riwi.messaging.rag.EmbeddingService;
 import com.riwi.messaging.security.DbContextHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,7 @@ public class CopilotController {
     private final DbContextHelper dbContextHelper;
     private final EmbeddingProvider embeddingProvider;
     private final EmbeddingRepository embeddingRepository;
+    private final EmbeddingService embeddingService;
     private final AiProvider aiProvider;
     private final RateLimiterService rateLimiterService;
 
@@ -37,14 +39,21 @@ public class CopilotController {
             DbContextHelper dbContextHelper,
             EmbeddingProvider embeddingProvider,
             EmbeddingRepository embeddingRepository,
+            EmbeddingService embeddingService,
             AiProvider aiProvider,
             RateLimiterService rateLimiterService) {
         this.jdbcTemplate = jdbcTemplate;
         this.dbContextHelper = dbContextHelper;
         this.embeddingProvider = embeddingProvider;
         this.embeddingRepository = embeddingRepository;
+        this.embeddingService = embeddingService;
         this.aiProvider = aiProvider;
         this.rateLimiterService = rateLimiterService;
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void onStartup() {
+        embeddingService.indexAllMessages(jdbcTemplate);
     }
 
     // Orchestrates RAG flow: Embed query -> Vector candidates -> RLS authorized select -> LLM completion -> Audit usage (D-12)
@@ -67,35 +76,59 @@ public class CopilotController {
             retrievalLimit = Math.max(1, Math.min(num.intValue(), 20));
         }
 
-        // 1. Vector similarity search for candidate message UUIDs
+        // 1. Hybrid candidate retrieval: Vector search + Keyword / Full-Text search
         float[] queryVector = embeddingProvider.embed(query.trim());
-        List<UUID> candidateIds = embeddingRepository.findNearestMessageIds(queryVector, retrievalLimit);
+        List<UUID> candidateIds = new ArrayList<>();
+
+        // Add Keyword search candidates (token overlap) at top priority
+        try {
+            String[] tokens = query.trim().replaceAll("[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]", " ").split("\\s+");
+            List<String> keywords = new ArrayList<>();
+            for (String t : tokens) {
+                if (t.length() >= 3) {
+                    keywords.add(t.toLowerCase());
+                }
+            }
+
+            if (!keywords.isEmpty()) {
+                StringBuilder kwClause = new StringBuilder();
+                List<Object> params = new ArrayList<>();
+                for (int i = 0; i < keywords.size(); i++) {
+                    if (i > 0) kwClause.append(" OR ");
+                    kwClause.append("rw_content ILIKE ?");
+                    params.add("%" + keywords.get(i) + "%");
+                }
+
+                String kwSql = "SELECT rw_id FROM rw_messages WHERE (" + kwClause + ") AND rw_is_active = TRUE LIMIT 15";
+                List<UUID> kwIds = jdbcTemplate.query(
+                        kwSql,
+                        (rs, rowNum) -> (UUID) rs.getObject("rw_id"),
+                        params.toArray()
+                );
+                candidateIds.addAll(kwIds);
+            }
+        } catch (Exception ignored) {}
+
+        // Add nearest vector candidates
+        try {
+            List<UUID> vectorIds = embeddingRepository.findNearestMessageIds(queryVector, Math.max(retrievalLimit, 10));
+            for (UUID vid : vectorIds) {
+                if (!candidateIds.contains(vid)) {
+                    candidateIds.add(vid);
+                }
+            }
+        } catch (Exception ignored) {}
 
         // 2. Authorize candidates via RLS in PostgreSQL
         dbContextHelper.setCurrentUser(jdbcTemplate, userId);
 
         List<Map<String, Object>> authorizedMessages = new ArrayList<>();
         if (!candidateIds.isEmpty()) {
-            String sql = "SELECT * FROM rw_messages WHERE rw_id = ANY(?::uuid[]) AND rw_is_active = TRUE";
-            Array uuidArray;
-            try {
-                uuidArray = Objects.requireNonNull(jdbcTemplate.getDataSource())
-                        .getConnection()
-                        .createArrayOf("uuid", candidateIds.toArray());
-            } catch (Exception e) {
-                uuidArray = null;
-            }
-
-            if (uuidArray != null) {
-                authorizedMessages = jdbcTemplate.queryForList(sql, uuidArray);
-            } else {
-                // Fallback for query building if connection array creation is restricted
-                String inSql = String.join(",", Collections.nCopies(candidateIds.size(), "?::uuid"));
-                authorizedMessages = jdbcTemplate.queryForList(
-                        "SELECT * FROM rw_messages WHERE rw_id IN (" + inSql + ") AND rw_is_active = TRUE",
-                        candidateIds.toArray()
-                );
-            }
+            String inSql = String.join(",", Collections.nCopies(candidateIds.size(), "?::uuid"));
+            authorizedMessages = jdbcTemplate.queryForList(
+                    "SELECT * FROM rw_messages WHERE rw_id IN (" + inSql + ") AND rw_is_active = TRUE ORDER BY rw_created_at ASC",
+                    candidateIds.toArray()
+            );
         }
 
         // 3. Build context and citations exclusively from RLS-authorized messages

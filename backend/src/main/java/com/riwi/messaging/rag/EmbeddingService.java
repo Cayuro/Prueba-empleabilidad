@@ -34,4 +34,22 @@ public class EmbeddingService {
             log.error("Failed to generate or store embedding for message {}: {}", messageId, e.getMessage());
         }
     }
+
+    // Synchronous generator for initial bootstrap
+    public void indexAllMessages(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+        try {
+            var messages = jdbcTemplate.queryForList("SELECT rw_id, rw_content FROM rw_messages WHERE rw_is_active = TRUE");
+            for (var m : messages) {
+                UUID msgId = (UUID) m.get("rw_id");
+                String content = (String) m.get("rw_content");
+                if (content != null && !content.isBlank()) {
+                    float[] vector = embeddingProvider.embed(content);
+                    embeddingRepository.save(msgId, vector);
+                }
+            }
+            log.info("Initialized vector embeddings for {} messages", messages.size());
+        } catch (Exception e) {
+            log.warn("Could not bootstrap message embeddings: {}", e.getMessage());
+        }
+    }
 }

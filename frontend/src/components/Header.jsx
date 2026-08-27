@@ -8,7 +8,7 @@ import { Sun, Moon, Globe, User, Radio, RefreshCw } from 'lucide-react';
 export default function Header({ onOpenProfile }) {
   const { theme, toggleTheme } = useTheme();
   const { toggleLanguage, t } = useLanguage();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [wsStatus, setWsStatus] = useState('DISCONNECTED');
 
   // Track real-time WebSocket connection state
@@ -39,11 +39,11 @@ export default function Header({ onOpenProfile }) {
     <header className="flex flex-wrap justify-between items-center px-4 py-3 border-b border-light-border dark:border-dark-border bg-light-card dark:bg-dark-card shadow-sm select-none transition-colors duration-200">
       {/* Brand logo & title */}
       <div className="flex items-center space-x-3">
-        <div className="w-9 h-9 rounded-lg bg-light-accent dark:bg-dark-accent flex items-center justify-center font-black text-black text-xl shadow-inner">
+        <div className="w-9 h-9 rounded-xl bg-white border border-neutral-200 flex items-center justify-center font-black text-[#6b5cff] text-xl shadow-sm ring-2 ring-[#6b5cff]/10">
           R
         </div>
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-light-text dark:text-dark-text leading-tight">
+          <h1 className="text-lg font-black tracking-tight text-light-text dark:text-dark-text leading-tight">
             {t.appTitle}
           </h1>
           <p className="text-xs text-light-muted dark:text-dark-muted hidden sm:block">
@@ -65,7 +65,7 @@ export default function Header({ onOpenProfile }) {
           </span>
           {wsStatus !== 'CONNECTED' && (
             <button 
-              onClick={() => wsService.connect()}
+              onClick={() => token && wsService.connect(token)}
               className="text-light-accent dark:text-dark-accent hover:opacity-80 ml-1"
               title={t.reconnect}
             >

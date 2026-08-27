@@ -70,33 +70,12 @@ export default function UserProfileModal({ isOpen, onClose, usageStats }) {
             </div>
           )}
 
-          {/* Demo User Switcher (For instant RLS permission testing) */}
-          <div className="space-y-1.5">
-            <div className="text-xs font-bold text-light-text dark:text-dark-text flex items-center space-x-1">
-              <RefreshCw size={13} className="text-light-accent dark:text-dark-accent" />
-              <span>{t.switchUserBtn}</span>
-            </div>
-            <div className="grid grid-cols-1 gap-1 max-h-36 overflow-y-auto">
-              {DEMO_USERS.map((demo) => {
-                const isCurrent = demo.id === user.id;
-                return (
-                  <button
-                    key={demo.id}
-                    onClick={() => {
-                      switchUser(demo);
-                      onClose();
-                    }}
-                    className={`text-left px-2.5 py-1.5 rounded-md text-xs flex items-center justify-between border transition-colors ${
-                      isCurrent
-                        ? 'bg-light-accent/15 dark:bg-dark-accent/15 border-light-accent dark:border-dark-accent font-bold text-light-accent dark:text-dark-accent'
-                        : 'bg-light-bg dark:bg-dark-bg border-light-border dark:border-dark-border text-light-text dark:text-dark-text hover:border-light-accent'
-                    }`}
-                  >
-                    <span className="truncate">{demo.name} ({demo.role})</span>
-                    {isCurrent && <span className="text-[10px] font-extrabold uppercase">Activo</span>}
-                  </button>
-                );
-              })}
+          {/* Session Security Note */}
+          <div className="p-3 rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-xs text-light-muted dark:text-dark-muted flex items-start space-x-2">
+            <Shield size={16} className="text-emerald-500 mt-0.5 shrink-0" />
+            <div>
+              <div className="font-bold text-light-text dark:text-dark-text">Sesión protegida con JWT (15 min)</div>
+              <div className="text-[11px] mt-0.5">La autorización y aislamiento de canales se valida en cada consulta directamente en PostgreSQL mediante Row Level Security (RLS).</div>
             </div>
           </div>
         </div>

@@ -33,18 +33,7 @@ public class ConversationController {
         dbContextHelper.setCurrentUser(jdbcTemplate, userId);
 
         String sql = """
-            SELECT
-                rw_channel_id,
-                rw_channel_name,
-                rw_channel_is_private,
-                rw_channel_created_by,
-                rw_channel_created_at,
-                rw_channel_updated_at,
-                rw_last_message_id,
-                rw_last_message_content,
-                rw_last_message_author_id,
-                rw_last_message_at,
-                rw_unread_count
+            SELECT *
             FROM rw_vw_user_conversations
             ORDER BY rw_last_message_at DESC NULLS LAST, rw_channel_created_at DESC
         """;

@@ -51,8 +51,8 @@ public class SubscriptionInterceptor implements ChannelInterceptor {
                     UUID userId = principal != null ? UUID.fromString(principal.getName()) : null;
 
                     if (!isAuthorizedForChannel(channelId, userId)) {
-                        log.warn("Subscription denied for user {} to topic {}", userId, destination);
-                        throw new AccessDeniedException("User is not authorized to subscribe to channel: " + channelId);
+                        log.debug("Subscription rejected for user {} to topic {}", userId, destination);
+                        return null; // Cleanly drop frame without throwing unhandled channel exceptions
                     }
                 }
             }
@@ -80,11 +80,17 @@ public class SubscriptionInterceptor implements ChannelInterceptor {
                             AND cm.rw_user_id = ?
                             AND cm.rw_is_active = TRUE
                       )
+                      OR EXISTS (
+                          SELECT 1 FROM rw_users u
+                          WHERE u.rw_id = ?
+                            AND u.rw_role = 'admin'
+                            AND u.rw_is_active = TRUE
+                      )
                   )
             )
         """;
 
-        Boolean allowed = jdbcTemplate.queryForObject(sql, Boolean.class, channelId, userId, userId);
+        Boolean allowed = jdbcTemplate.queryForObject(sql, Boolean.class, channelId, userId, userId, userId);
         return Boolean.TRUE.equals(allowed);
     }
 }

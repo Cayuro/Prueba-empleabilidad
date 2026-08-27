@@ -25,6 +25,10 @@ class WebSocketService {
 
   // Connect to the Spring Boot STOMP broker at /ws
   connect(token) {
+    if (!token || typeof token !== 'string' || !token.startsWith('ey') || token.split('.').length !== 3) {
+      return;
+    }
+
     if (this.client && this.client.active) {
       return;
     }
@@ -34,11 +38,8 @@ class WebSocketService {
     this.client = new Client({
       // Provide SockJS fallback factory
       webSocketFactory: () => new SockJS('/ws'),
-      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
-      debug: (str) => {
-        // One-line debug logger for WebSocket frames
-        // console.log('[STOMP]:', str);
-      },
+      connectHeaders: { Authorization: `Bearer ${token}` },
+      debug: () => {},
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
@@ -50,14 +51,12 @@ class WebSocketService {
         });
       },
       onStompError: (frame) => {
-        console.error('[STOMP Error]:', frame.headers['message'], frame.body);
         this._setStatus('ERROR');
       },
       onWebSocketClose: () => {
         this._setStatus('DISCONNECTED');
       },
-      onWebSocketError: (event) => {
-        console.warn('[WebSocket Warning]: Connection failed, retrying in background.');
+      onWebSocketError: () => {
         this._setStatus('DISCONNECTED');
       }
     });

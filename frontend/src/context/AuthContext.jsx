@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-// Demo users from seed data for instant testing and local simulation
+// Demo users from seed data for instant reference
 export const DEMO_USERS = [
   {
     id: "c0000000-0000-0000-0000-000000000001",
@@ -36,27 +36,48 @@ export const DEMO_USERS = [
 
 const AuthContext = createContext(null);
 
+const isValidJwt = (t) => {
+  return typeof t === 'string' && t.startsWith('ey') && t.split('.').length === 3;
+};
+
 export function AuthProvider({ children }) {
-  // Current logged in user object
+  // Current logged in user object - purge any stale/mock tokens
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('rw_user');
-    return saved ? JSON.parse(saved) : DEMO_USERS[0];
+    try {
+      const saved = localStorage.getItem('rw_user');
+      const savedToken = localStorage.getItem('rw_access_token');
+      if (saved && isValidJwt(savedToken)) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // ignore JSON parse error
+    }
+    localStorage.removeItem('rw_user');
+    localStorage.removeItem('rw_access_token');
+    localStorage.removeItem('rw_refresh_token');
+    return null;
   });
 
   // JWT Access token for backend REST requests
-  const [token, setToken] = useState(() => localStorage.getItem('rw_access_token') || 'demo_token');
-  const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem('rw_refresh_token') || 'demo_refresh');
+  const [token, setToken] = useState(() => {
+    const savedToken = localStorage.getItem('rw_access_token');
+    return isValidJwt(savedToken) ? savedToken : null;
+  });
+  const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem('rw_refresh_token') || null);
 
   // Sync auth state to localStorage
   useEffect(() => {
-    if (user) {
+    if (user && isValidJwt(token)) {
       localStorage.setItem('rw_user', JSON.stringify(user));
-    } else {
+      localStorage.setItem('rw_access_token', token);
+    } else if (!user) {
       localStorage.removeItem('rw_user');
+      localStorage.removeItem('rw_access_token');
+      localStorage.removeItem('rw_refresh_token');
     }
-  }, [user]);
+  }, [user, token]);
 
-  // Login handler contacting backend /api/auth/login with mock fallback
+  // Login handler contacting backend /api/auth/login
   const login = async (email, password) => {
     try {
       const res = await fetch('/api/auth/login', {
@@ -72,35 +93,54 @@ export function AuthProvider({ children }) {
         localStorage.setItem('rw_access_token', data.access_token);
         localStorage.setItem('rw_refresh_token', data.refresh_token);
 
-        // Find demo user match or construct user
-        const matched = DEMO_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase()) || {
-          id: data.user_id || 'c0000000-0000-0000-0000-000000000001',
+        const userData = data.user || {
+          id: data.user_id,
           email,
           name: email.split('@')[0],
           role: 'member',
         };
-        setUser(matched);
+        setUser(userData);
         return { success: true };
+      } else {
+        const err = await res.json();
+        return { success: false, error: err.message || 'Invalid credentials' };
       }
     } catch {
-      // Backend not running, check demo users list
-      const matched = DEMO_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase());
-      if (matched) {
-        setUser(matched);
-        setToken('demo_token_' + matched.id);
+      return { success: false, error: 'Cannot connect to authentication server' };
+    }
+  };
+
+  // Register handler contacting backend /api/auth/register
+  const register = async (name, email, password) => {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setToken(data.access_token);
+        setRefreshToken(data.refresh_token);
+        localStorage.setItem('rw_access_token', data.access_token);
+        localStorage.setItem('rw_refresh_token', data.refresh_token);
+
+        const userData = data.user || {
+          id: data.user_id,
+          email,
+          name,
+          role: 'member',
+        };
+        setUser(userData);
         return { success: true };
+      } else {
+        const err = await res.json();
+        return { success: false, error: err.message || 'Registration failed' };
       }
+    } catch {
+      return { success: false, error: 'Cannot connect to server' };
     }
-
-    // Direct fallback for testing
-    const demo = DEMO_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (demo) {
-      setUser(demo);
-      setToken('demo_token_' + demo.id);
-      return { success: true };
-    }
-
-    return { success: false, error: 'Invalid credentials' };
   };
 
   // Sign out and clear stored session tokens
@@ -128,16 +168,8 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Switch demo user quickly for RLS testing
-  const switchUser = (selectedUser) => {
-    setUser(selectedUser);
-    setToken('demo_token_' + selectedUser.id);
-    localStorage.setItem('rw_user', JSON.stringify(selectedUser));
-    localStorage.setItem('rw_access_token', 'demo_token_' + selectedUser.id);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, token, refreshToken, login, logout, switchUser, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, token, refreshToken, login, logout, isAuthenticated: !!(user && isValidJwt(token)) }}>
       {children}
     </AuthContext.Provider>
   );

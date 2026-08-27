@@ -35,12 +35,14 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
 
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7).trim();
-                try {
-                    UUID userId = jwtUtil.extractUserId(token);
-                    accessor.setUser(new StompPrincipal(userId.toString()));
-                    log.info("WebSocket STOMP connected for user: {}", userId);
-                } catch (Exception e) {
-                    log.warn("Invalid JWT in WebSocket CONNECT header: {}", e.getMessage());
+                if (!token.isEmpty() && !"null".equalsIgnoreCase(token) && !"undefined".equalsIgnoreCase(token) && token.startsWith("ey") && token.split("\\.").length == 3) {
+                    try {
+                        UUID userId = jwtUtil.extractUserId(token);
+                        accessor.setUser(new StompPrincipal(userId.toString()));
+                        log.info("WebSocket STOMP connected for user: {}", userId);
+                    } catch (Exception e) {
+                        log.warn("Invalid JWT in WebSocket CONNECT header: {}", e.getMessage());
+                    }
                 }
             }
         }

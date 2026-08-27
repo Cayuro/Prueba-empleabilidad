@@ -1,0 +1,63 @@
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    container_name: rw_database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-bd_juan_gomez_hamilton}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-bd_juan_gomez_hamilton}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rw_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-bd_juan_gomez_hamilton}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_APP_USER: ${DB_APP_USER:-rw_app}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-rw_app_secure_pwd_2026!}
+      JWT_SECRET: ${JWT_SECRET:-changeme_min_32_characters_secret_key_riwi_2026}
+      JWT_EXPIRY_MINUTES: ${JWT_EXPIRY_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRY_DAYS: ${REFRESH_TOKEN_EXPIRY_DAYS:-30}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      SYSTEM_PROMPT_VERSION: ${SYSTEM_PROMPT_VERSION:-1}
+      WEBSOCKET_ENDPOINT: ${WEBSOCKET_ENDPOINT:-/ws}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rw_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  db_data:
+    driver: local

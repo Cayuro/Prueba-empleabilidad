@@ -1,25 +1,29 @@
 package com.riwi.messaging.controller;
 
-import com.riwi.messaging.config.RateLimiterService;
-import com.riwi.messaging.exception.ApiException;
-import com.riwi.messaging.security.JwtUtil;
-import jakarta.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import com.riwi.messaging.config.RateLimiterService;
+import com.riwi.messaging.exception.ApiException;
+import com.riwi.messaging.security.DbContextHelper;
+import com.riwi.messaging.security.JwtUtil;
 
-// Thin Auth Controller managing login, token rotation and logout (D-07, D-08)
+import jakarta.servlet.http.HttpServletRequest;
+
+// Authentication Controller issuing 15-minute access tokens and rotating refresh tokens (D-07, D-08, D-09, D-13)
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -28,12 +32,19 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final RateLimiterService rateLimiterService;
+    private final DbContextHelper dbContextHelper;
 
-    public AuthController(JdbcTemplate jdbcTemplate, JwtUtil jwtUtil, PasswordEncoder passwordEncoder, RateLimiterService rateLimiterService) {
+    public AuthController(
+            JdbcTemplate jdbcTemplate,
+            JwtUtil jwtUtil,
+            PasswordEncoder passwordEncoder,
+            RateLimiterService rateLimiterService,
+            DbContextHelper dbContextHelper) {
         this.jdbcTemplate = jdbcTemplate;
         this.jwtUtil = jwtUtil;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiterService = rateLimiterService;
+        this.dbContextHelper = dbContextHelper;
     }
 
     // Hashes refresh token string with SHA-256 for safe DB storage
@@ -51,6 +62,73 @@ public class AuthController {
         } catch (Exception e) {
             throw new RuntimeException("SHA-256 algorithm not available", e);
         }
+    }
+
+    // Registers a new user via SECURITY DEFINER stored procedure rw_sp_create_user (D-09, D-13)
+    @PostMapping("/register")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        String clientIp = request.getRemoteAddr();
+        rateLimiterService.checkRateLimit("register:" + clientIp, 10);
+
+        String email = body.get("email");
+        String password = body.get("password");
+        String name = body.get("name");
+
+        if (email == null || email.isBlank() || password == null || password.isBlank() || name == null || name.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Name, email and password are required");
+        }
+
+        if (password.length() < 6) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Password must be at least 6 characters long");
+        }
+
+        // Check if active user already exists
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM rw_users WHERE rw_email = LOWER(TRIM(?)) AND rw_is_active = TRUE",
+                Integer.class,
+                email
+        );
+        if (count != null && count > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "EMAIL_ALREADY_EXISTS", "A user with this email already exists");
+        }
+
+        String passwordHash = passwordEncoder.encode(password);
+
+        // Call stored function rw_fn_create_user in PostgreSQL (Smart Database)
+        UUID userId = jdbcTemplate.queryForObject(
+                "SELECT rw_fn_create_user(?, ?, ?, 'member')",
+                UUID.class,
+                email.trim(),
+                passwordHash,
+                name.trim()
+        );
+
+        // Set session context for RLS
+        dbContextHelper.setCurrentUser(jdbcTemplate, userId);
+
+        String accessToken = jwtUtil.generateAccessToken(userId);
+        String rawRefreshToken = UUID.randomUUID().toString();
+        String tokenHash = hashToken(rawRefreshToken);
+
+        jdbcTemplate.update(
+                "INSERT INTO rw_refresh_tokens (rw_user_id, rw_token_hash, rw_expires_at) VALUES (?, ?, NOW() + INTERVAL '30 days')",
+                userId,
+                tokenHash
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("access_token", accessToken);
+        response.put("refresh_token", rawRefreshToken);
+        response.put("expires_in", 900);
+        response.put("user", Map.of(
+                "id", userId.toString(),
+                "email", email.trim().toLowerCase(),
+                "name", name.trim(),
+                "role", "member"
+        ));
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // Authenticates user, verifies password hash, and issues access + refresh tokens
@@ -82,6 +160,8 @@ public class AuthController {
         }
 
         UUID userId = (UUID) user.get("rw_id");
+        dbContextHelper.setCurrentUser(jdbcTemplate, userId);
+
         String accessToken = jwtUtil.generateAccessToken(userId);
         String rawRefreshToken = UUID.randomUUID().toString();
         String tokenHash = hashToken(rawRefreshToken);
@@ -116,43 +196,27 @@ public class AuthController {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Refresh token is required");
         }
 
-        String tokenHash = hashToken(rawRefreshToken);
-        String sql = "SELECT rw_id, rw_user_id, rw_is_revoked, rw_expires_at FROM rw_refresh_tokens WHERE rw_token_hash = ?";
-        var tokens = jdbcTemplate.queryForList(sql, tokenHash);
-
-        if (tokens.isEmpty()) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Invalid refresh token");
-        }
-
-        Map<String, Object> tokenRecord = tokens.get(0);
-        Boolean isRevoked = (Boolean) tokenRecord.get("rw_is_revoked");
-        Timestamp expiresAt = (Timestamp) tokenRecord.get("rw_expires_at");
-
-        if (Boolean.TRUE.equals(isRevoked) || (expiresAt != null && expiresAt.toInstant().isBefore(Instant.now()))) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Refresh token is revoked or expired");
-        }
-
-        UUID oldTokenId = (UUID) tokenRecord.get("rw_id");
-        UUID userId = (UUID) tokenRecord.get("rw_user_id");
-
-        // Issue new token pair and rotate
-        String newAccessToken = jwtUtil.generateAccessToken(userId);
+        String oldTokenHash = hashToken(rawRefreshToken);
         String newRawRefreshToken = UUID.randomUUID().toString();
         String newTokenHash = hashToken(newRawRefreshToken);
-        UUID newTokenId = UUID.randomUUID();
 
-        jdbcTemplate.update(
-                "INSERT INTO rw_refresh_tokens (rw_id, rw_user_id, rw_token_hash, rw_expires_at) VALUES (?, ?, ?, NOW() + INTERVAL '30 days')",
-                newTokenId,
-                userId,
-                newTokenHash
-        );
+        UUID userId;
+        try {
+            userId = jdbcTemplate.queryForObject(
+                    "SELECT rw_fn_rotate_refresh_token(?, ?)",
+                    UUID.class,
+                    oldTokenHash,
+                    newTokenHash
+            );
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Invalid or expired refresh token");
+        }
 
-        jdbcTemplate.update(
-                "UPDATE rw_refresh_tokens SET rw_is_revoked = TRUE, rw_replaced_by = ? WHERE rw_id = ?",
-                newTokenId,
-                oldTokenId
-        );
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Invalid or expired refresh token");
+        }
+
+        String newAccessToken = jwtUtil.generateAccessToken(userId);
 
         Map<String, Object> response = new HashMap<>();
         response.put("access_token", newAccessToken);
@@ -170,10 +234,7 @@ public class AuthController {
             String rawRefreshToken = body.get("refresh_token");
             if (rawRefreshToken != null && !rawRefreshToken.isBlank()) {
                 String tokenHash = hashToken(rawRefreshToken);
-                jdbcTemplate.update(
-                        "UPDATE rw_refresh_tokens SET rw_is_revoked = TRUE WHERE rw_token_hash = ?",
-                        tokenHash
-                );
+                jdbcTemplate.update("CALL rw_sp_revoke_refresh_token(?)", tokenHash);
             }
         }
         return ResponseEntity.noContent().build();
