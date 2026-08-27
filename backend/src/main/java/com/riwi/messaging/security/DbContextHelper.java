@@ -12,9 +12,31 @@ import java.util.UUID;
 @Component
 public class DbContextHelper {
 
+    // Validates that the user actually exists in rw_users before proceeding
+    public void validateUserExists(JdbcTemplate jdbcTemplate, UUID userId) {
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "User is not authenticated");
+        }
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM rw_users WHERE rw_id = ? AND rw_is_active = TRUE",
+                    Integer.class,
+                    userId
+            );
+            if (count == null || count == 0) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_NOT_FOUND", "Session is invalid or user was not found in database");
+            }
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_NOT_FOUND", "Session is invalid or user was not found in database");
+        }
+    }
+
     // Sets the database session variable for PostgreSQL Row Level Security (RLS)
     public void setCurrentUser(JdbcTemplate jdbcTemplate, UUID userId) {
         if (userId != null) {
+            validateUserExists(jdbcTemplate, userId);
             jdbcTemplate.queryForObject("SELECT set_config('app.current_user_id', ?, true)", String.class, userId.toString());
         }
     }

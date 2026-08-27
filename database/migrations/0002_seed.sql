@@ -1,12 +1,10 @@
 -- =============================================================================
--- Script: load-seed.sql
--- Description: Inserts initial seed data into PostgreSQL tables (10 demo users)
+-- Migration 0002: Seed initial corpus and 10 demo users
+-- Executed automatically on fresh database container initialization
 -- Riwi Co. S.A.S. — Internal Messaging Platform with AI
 -- =============================================================================
 
 BEGIN;
-
-TRUNCATE TABLE rw_copilot_usage, rw_refresh_tokens, rw_embeddings, rw_message_reads, rw_messages, rw_channel_members, rw_channels, rw_users CASCADE;
 
 -- 1. Insert 10 Users
 INSERT INTO rw_users (rw_id, rw_email, rw_password_hash, rw_name, rw_role, rw_is_active, rw_created_at, rw_updated_at, rw_deleted_at)
@@ -21,7 +19,7 @@ VALUES
     ('c0000000-0000-0000-0000-000000000008', 'mateo.backend@riwi.io', '$2a$10$8vagG7KWtRUqDTQVeVhcJ.RYiXlim6gxBNL9M6BbwGMRS72McU2WG', 'Mateo Rueda', 'member', TRUE, '2026-08-01 10:00:00+00', '2026-08-01 10:00:00+00', NULL),
     ('c0000000-0000-0000-0000-000000000009', 'lucia.cloud@riwi.io', '$2a$10$8vagG7KWtRUqDTQVeVhcJ.RYiXlim6gxBNL9M6BbwGMRS72McU2WG', 'Lucia Herrera', 'member', TRUE, '2026-08-01 10:00:00+00', '2026-08-01 10:00:00+00', NULL),
     ('c0000000-0000-0000-0000-000000000010', 'diego.coder@riwi.io', '$2a$10$8vagG7KWtRUqDTQVeVhcJ.RYiXlim6gxBNL9M6BbwGMRS72McU2WG', 'Diego Ospina', 'member', TRUE, '2026-08-01 10:00:00+00', '2026-08-01 10:00:00+00', NULL)
-ON CONFLICT (rw_id) DO UPDATE SET rw_password_hash = EXCLUDED.rw_password_hash;
+ON CONFLICT (rw_id) DO NOTHING;
 
 -- 2. Insert Channels (Public and Private with descriptive names)
 INSERT INTO rw_channels (rw_id, rw_name, rw_is_private, rw_created_by, rw_is_active, rw_created_at, rw_updated_at, rw_deleted_at)
@@ -30,7 +28,7 @@ VALUES
     ('10000000-0000-0000-0000-000000000002', 'reuniones-despliegue-y-dev', FALSE, 'c0000000-0000-0000-0000-000000000002', TRUE, '2026-08-01 10:15:00+00', '2026-08-01 10:15:00+00', NULL),
     ('10000000-0000-0000-0000-000000000003', 'liderazgo-estrategico', TRUE, 'c0000000-0000-0000-0000-000000000001', TRUE, '2026-08-01 10:30:00+00', '2026-08-01 10:30:00+00', NULL),
     ('10000000-0000-0000-0000-000000000004', 'proyecto-frontend-ui', TRUE, 'c0000000-0000-0000-0000-000000000002', TRUE, '2026-08-01 10:45:00+00', '2026-08-01 10:45:00+00', NULL)
-ON CONFLICT (rw_id) DO UPDATE SET rw_name = EXCLUDED.rw_name;
+ON CONFLICT (rw_id) DO NOTHING;
 
 -- 3. Insert Channel Members
 INSERT INTO rw_channel_members (rw_channel_id, rw_user_id, rw_role, rw_joined_at, rw_is_active, rw_deleted_at)

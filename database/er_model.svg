@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 850" width="100%" height="100%" style="background-color: #0b141a; font-family: system-ui, -apple-system, sans-serif;">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00a884" />
+      <stop offset="100%" stop-color="#005c4b" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111b21" />
+      <stop offset="100%" stop-color="#202c33" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- Title -->
+  <text x="600" y="45" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="900" letter-spacing="1">RIWI CO. S.A.S. — ENTITY-RELATIONSHIP MODEL (3FN)</text>
+  <text x="600" y="70" text-anchor="middle" fill="#00a884" font-size="13" font-weight="600">Database: bd_juan_gomez_hamilton | Engine: PostgreSQL 15+ (pgvector, RLS)</text>
+
+  <!-- Table 1: rw_users -->
+  <g transform="translate(50, 100)" filter="url(#shadow)">
+    <rect width="250" height="240" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_users (Users)</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK  rw_id (UUID)</text>
+    <text x="15" y="80" fill="#e9edef" font-size="11">UQ  rw_email (VARCHAR)</text>
+    <text x="15" y="100" fill="#8696a0" font-size="11">    rw_password_hash (VARCHAR)</text>
+    <text x="15" y="120" fill="#e9edef" font-size="11">    rw_name (VARCHAR)</text>
+    <text x="15" y="140" fill="#e9edef" font-size="11">    rw_role (admin | member)</text>
+    <text x="15" y="160" fill="#8696a0" font-size="11">    rw_is_active (BOOLEAN)</text>
+    <text x="15" y="180" fill="#8696a0" font-size="11">    rw_created_at (TIMESTAMPTZ)</text>
+    <text x="15" y="200" fill="#8696a0" font-size="11">    rw_updated_at (TIMESTAMPTZ)</text>
+    <text x="15" y="220" fill="#8696a0" font-size="11">    rw_deleted_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 2: rw_channels -->
+  <g transform="translate(475, 100)" filter="url(#shadow)">
+    <rect width="250" height="220" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_channels (Channels)</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK  rw_id (UUID)</text>
+    <text x="15" y="80" fill="#e9edef" font-size="11">    rw_name (VARCHAR)</text>
+    <text x="15" y="100" fill="#e9edef" font-size="11">    rw_is_private (BOOLEAN)</text>
+    <text x="15" y="120" fill="#53bdeb" font-size="11">FK  rw_created_by (UUID)</text>
+    <text x="15" y="140" fill="#8696a0" font-size="11">    rw_is_active (BOOLEAN)</text>
+    <text x="15" y="160" fill="#8696a0" font-size="11">    rw_created_at (TIMESTAMPTZ)</text>
+    <text x="15" y="180" fill="#8696a0" font-size="11">    rw_updated_at (TIMESTAMPTZ)</text>
+    <text x="15" y="200" fill="#8696a0" font-size="11">    rw_deleted_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 3: rw_channel_members -->
+  <g transform="translate(900, 100)" filter="url(#shadow)">
+    <rect width="250" height="180" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_channel_members</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK,FK rw_channel_id (UUID)</text>
+    <text x="15" y="80" fill="#00a884" font-size="11" font-weight="bold">PK,FK rw_user_id (UUID)</text>
+    <text x="15" y="100" fill="#e9edef" font-size="11">      rw_role (admin | member)</text>
+    <text x="15" y="120" fill="#8696a0" font-size="11">      rw_joined_at (TIMESTAMPTZ)</text>
+    <text x="15" y="140" fill="#8696a0" font-size="11">      rw_is_active (BOOLEAN)</text>
+    <text x="15" y="160" fill="#8696a0" font-size="11">      rw_deleted_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 4: rw_messages -->
+  <g transform="translate(475, 380)" filter="url(#shadow)">
+    <rect width="250" height="250" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_messages (Messages)</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK  rw_id (UUID)</text>
+    <text x="15" y="80" fill="#53bdeb" font-size="11">FK  rw_channel_id (UUID)</text>
+    <text x="15" y="100" fill="#53bdeb" font-size="11">FK  rw_author_id (UUID)</text>
+    <text x="15" y="120" fill="#e9edef" font-size="11">    rw_content (TEXT)</text>
+    <text x="15" y="140" fill="#8696a0" font-size="11">    rw_metadata (JSONB)</text>
+    <text x="15" y="160" fill="#ffbc00" font-size="11">    rw_tsv (TSVECTOR - Trigger)</text>
+    <text x="15" y="180" fill="#8696a0" font-size="11">    rw_is_active (BOOLEAN)</text>
+    <text x="15" y="200" fill="#8696a0" font-size="11">    rw_created_at (TIMESTAMPTZ)</text>
+    <text x="15" y="220" fill="#8696a0" font-size="11">    rw_updated_at (TIMESTAMPTZ)</text>
+    <text x="15" y="240" fill="#8696a0" font-size="11">    rw_deleted_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 5: rw_message_reads -->
+  <g transform="translate(900, 380)" filter="url(#shadow)">
+    <rect width="250" height="120" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_message_reads</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK,FK rw_message_id (UUID)</text>
+    <text x="15" y="80" fill="#00a884" font-size="11" font-weight="bold">PK,FK rw_user_id (UUID)</text>
+    <text x="15" y="100" fill="#8696a0" font-size="11">      rw_read_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 6: rw_embeddings -->
+  <g transform="translate(900, 540)" filter="url(#shadow)">
+    <rect width="250" height="130" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_embeddings (pgvector)</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK  rw_id (UUID)</text>
+    <text x="15" y="80" fill="#53bdeb" font-size="11">FK  rw_message_id (UUID)</text>
+    <text x="15" y="100" fill="#ffbc00" font-size="11">    rw_embedding (VECTOR 1536)</text>
+    <text x="15" y="120" fill="#8696a0" font-size="11">    rw_created_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 7: rw_refresh_tokens -->
+  <g transform="translate(50, 400)" filter="url(#shadow)">
+    <rect width="250" height="190" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_refresh_tokens</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK  rw_id (UUID)</text>
+    <text x="15" y="80" fill="#53bdeb" font-size="11">FK  rw_user_id (UUID)</text>
+    <text x="15" y="100" fill="#8696a0" font-size="11">    rw_token_hash (VARCHAR)</text>
+    <text x="15" y="120" fill="#8696a0" font-size="11">    rw_is_revoked (BOOLEAN)</text>
+    <text x="15" y="140" fill="#53bdeb" font-size="11">FK  rw_replaced_by (UUID)</text>
+    <text x="15" y="160" fill="#8696a0" font-size="11">    rw_expires_at (TIMESTAMPTZ)</text>
+    <text x="15" y="180" fill="#8696a0" font-size="11">    rw_created_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Table 8: rw_copilot_usage -->
+  <g transform="translate(50, 640)" filter="url(#shadow)">
+    <rect width="250" height="150" rx="8" fill="url(#cardGrad)" stroke="#2a3942" stroke-width="1.5" />
+    <rect width="250" height="36" rx="8" fill="url(#headerGrad)" />
+    <text x="125" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">rw_copilot_usage</text>
+    <text x="15" y="60" fill="#00a884" font-size="11" font-weight="bold">PK  rw_id (UUID)</text>
+    <text x="15" y="80" fill="#53bdeb" font-size="11">FK  rw_user_id (UUID)</text>
+    <text x="15" y="100" fill="#e9edef" font-size="11">    rw_query (TEXT)</text>
+    <text x="15" y="120" fill="#e9edef" font-size="11">    rw_tokens_used (INT >= 0)</text>
+    <text x="15" y="140" fill="#8696a0" font-size="11">    rw_created_at (TIMESTAMPTZ)</text>
+  </g>
+
+  <!-- Connector Lines -->
+  <!-- rw_users to rw_channels -->
+  <path d="M 300 180 L 475 180" stroke="#00a884" stroke-width="2" stroke-dasharray="4" />
+  <!-- rw_channels to rw_messages -->
+  <path d="M 600 320 L 600 380" stroke="#00a884" stroke-width="2" />
+  <!-- rw_channels to rw_channel_members -->
+  <path d="M 725 180 L 900 180" stroke="#00a884" stroke-width="2" />
+  <!-- rw_messages to rw_message_reads -->
+  <path d="M 725 430 L 900 430" stroke="#00a884" stroke-width="2" />
+  <!-- rw_messages to rw_embeddings -->
+  <path d="M 725 580 L 900 580" stroke="#00a884" stroke-width="2" />
+  <!-- rw_users to rw_refresh_tokens -->
+  <path d="M 175 340 L 175 400" stroke="#00a884" stroke-width="2" />
+  <!-- rw_users to rw_copilot_usage -->
+  <path d="M 175 590 L 175 640" stroke="#00a884" stroke-width="2" />
+</svg>

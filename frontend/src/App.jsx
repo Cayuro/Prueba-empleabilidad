@@ -263,6 +263,22 @@ function MainApp() {
     }
   };
 
+  // Edit/update an existing message
+  const handleEditMessage = async (messageId, newContent) => {
+    if (!activeChannel) return { success: false };
+    const channelId = activeChannel.rw_channel_id || activeChannel.rw_id;
+    try {
+      await api.updateMessage(channelId, messageId, newContent, token);
+      setMessages((prev) =>
+        prev.map((m) => (m.rw_id === messageId ? { ...m, rw_content: newContent, rw_updated_at: new Date().toISOString() } : m))
+      );
+      return { success: true };
+    } catch (e) {
+      console.error('Update error:', e);
+      return { success: false, error: 'Error al actualizar el mensaje' };
+    }
+  };
+
   // Create a new channel
   const handleCreateChannel = async (channelData) => {
     const newChan = await api.createChannel(channelData, token);
@@ -358,6 +374,7 @@ function MainApp() {
             onSendMessage={handleSendMessage}
             onRetryMessage={handleRetryMessage}
             onDeleteMessage={handleDeleteMessage}
+            onEditMessage={handleEditMessage}
             onLoadOlderMessages={handleLoadOlderMessages}
             hasMoreHistory={hasMoreHistory}
             highlightedMessageId={highlightedMessageId}

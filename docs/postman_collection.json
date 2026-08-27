@@ -1,0 +1,344 @@
+{
+  "info": {
+    "_postman_id": "8f3b2d10-7e4a-4b99-9b55-a123456789ab",
+    "name": "Riwi Messaging Platform API",
+    "description": "Complete collection of API endpoints for Riwi Co. S.A.S. Internal Messaging Platform with AI Copilot & Smart Database RLS.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Login (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@riwi.io\",\n  \"password\": \"RiwiAdmin2026!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}//api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login (Developer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"valeria.dev@riwi.io\",\n  \"password\": \"RiwiDev2026!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nuevo Coder\",\n  \"email\": \"nuevo.coder@riwi.io\",\n  \"password\": \"RiwiDev2026!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Conversations & Channels",
+      "item": [
+        {
+          "name": "Get User Conversations (RLS View)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "List Channels",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/channels",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels"]
+            }
+          }
+        },
+        {
+          "name": "Create Channel",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"proyecto-ia\",\n  \"is_private\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/channels",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels"]
+            }
+          }
+        },
+        {
+          "name": "Get Channel Members",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/channels/10000000-0000-0000-0000-000000000001/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels", "10000000-0000-0000-0000-000000000001", "members"]
+            }
+          }
+        },
+        {
+          "name": "Invite / Add Member to Channel",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"c0000000-0000-0000-0000-000000000003\",\n  \"role\": \"member\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/channels/10000000-0000-0000-0000-000000000004/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels", "10000000-0000-0000-0000-000000000004", "members"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Messages & Keyset Pagination",
+      "item": [
+        {
+          "name": "Get Messages (Keyset Paginated)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/channels/10000000-0000-0000-0000-000000000001/messages?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels", "10000000-0000-0000-0000-000000000001", "messages"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Hola a todos desde Postman!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/channels/10000000-0000-0000-0000-000000000001/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels", "10000000-0000-0000-0000-000000000001", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Mark Message as Read",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/channels/10000000-0000-0000-0000-000000000001/messages/20000000-0000-0000-0000-000000000001/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels", "10000000-0000-0000-0000-000000000001", "messages", "20000000-0000-0000-0000-000000000001", "read"]
+            }
+          }
+        },
+        {
+          "name": "Soft Delete Message",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/channels/10000000-0000-0000-0000-000000000001/messages/20000000-0000-0000-0000-000000000001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "channels", "10000000-0000-0000-0000-000000000001", "messages", "20000000-0000-0000-0000-000000000001"]
+            }
+          }
+        },
+        {
+          "name": "Full-Text Search Messages",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/messages/search?q=despliegue&limit=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messages", "search"],
+              "query": [
+                { "key": "q", "value": "despliegue" },
+                { "key": "limit", "value": "15" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. AI Copilot RAG",
+      "item": [
+        {
+          "name": "Query Copilot (RAG RLS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"¿Qué se acordó en la reunión de despliegue?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "copilot", "query"]
+            }
+          }
+        },
+        {
+          "name": "Get Copilot Usage Stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/copilot/usage",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "copilot", "usage"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. User Maintenance (Stored Procedures)",
+      "item": [
+        {
+          "name": "Get Users (rw_sp_get_users)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?search=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [{ "key": "search", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Update User (rw_sp_maintain_user)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Santiago Restrepo (Updated)\",\n  \"role\": \"member\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/c0000000-0000-0000-0000-000000000003",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "c0000000-0000-0000-0000-000000000003"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

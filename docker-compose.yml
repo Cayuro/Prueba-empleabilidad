@@ -31,8 +31,8 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-bd_juan_gomez_hamilton}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_USER: ${DB_APP_USER:-rw_app}
+      DB_PASSWORD: ${DB_APP_PASSWORD:-rw_app_secure_pwd_2026!}
       DB_APP_USER: ${DB_APP_USER:-rw_app}
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:-rw_app_secure_pwd_2026!}
       JWT_SECRET: ${JWT_SECRET:-changeme_min_32_characters_secret_key_riwi_2026}

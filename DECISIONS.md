@@ -896,6 +896,65 @@ Permitir que el LLM intente responder libremente con conocimientos generales o d
 **Razón:**  
 Garantiza integridad corporativa, evita desinformación o alucinaciones y refuerza el aislamiento de seguridad RLS ante consultas no autorizadas.
 
+---
+
+## D-24 — Edición de Mensajes en Línea y Entregables Completos
+
+**Contexto:**  
+La especificación de `Requeriments.md` requiere que los mensajes puedan editarse y eliminarse conservando el estado original ante fallos, y que se suministren todos los artefactos de entrega (OpenAPI JSON, Colección Postman, Modelo ER en formato visual SVG y Consultas SQL requeridas de la sección 11).
+
+**Decisión:**  
+1. **Edición en Línea:** Se integró la acción de edición (icono lápiz) en `ZoneChat.jsx` que invoca `PUT /api/channels/{channelId}/messages/{messageId}`. Al editar exitosamente, el mensaje muestra la etiqueta `(editado)` y actualiza `rw_updated_at`. Si la petición falla, el contenido original se preserva intacto sin pérdida de datos.
+2. **Entregables Empaquetados:**
+   - Documentación OpenAPI 3.0 exportada en `docs/openapi.json`.
+   - Colección Postman completa con variables de entorno en `docs/postman_collection.json`.
+   - Diagrama del Modelo Entidad Relación en formato vectorial independiente `database/er_model.svg`.
+   - Consultas SQL requeridas (Sección 11) documentadas en `database/queries.sql`.
+
+**Alternativa descartada:**  
+Omitir la interfaz de edición o entregar únicamente fragmentos sueltos sin artefactos exportados.
+
+**Razón:**  
+Cumplimiento al 100% de la rúbrica de evaluación técnica y máxima facilidad de auditoría para el equipo evaluador.
+
+---
+
+## D-25 — Eliminación del User Switcher en Perfil y Forzado de Autenticación Real por Login
+
+**Contexto:**  
+La presencia de un selector de cambio rápido de usuario dentro del modal de perfil de usuario (`UserProfileModal.jsx`) permitía suplantar a cualquier usuario sin ingresar credenciales. En un entorno seguro con Row Level Security (RLS), la suplantación directa vulnera el principio de no repudio y aislamiento de identidad.
+
+**Decisión:**  
+1. **Eliminación Total del Switcher en Perfil:** Se retiró por completo la lista interactiva de cambio de cuentas del modal de perfil de usuario.
+2. **Autenticación Estricta por Login:** La única vía legítima para cambiar de usuario es cerrar sesión activamente mediante el botón **Cerrar Sesión (Sign Out)** y volver a autenticarse en la pantalla de inicio de sesión (`LoginModal.jsx`) con email y contraseña reales validados mediante Bcrypt en PostgreSQL (`POST /api/auth/login`).
+3. **Cuentas de Prueba en Login:** Para agilizar pruebas y QA, la pantalla de Login mantiene los botones asistentes de las 10 cuentas de prueba que ejecutan el flujo formal de autenticación REST y obtención de JWT firmado.
+
+**Alternativa descartada:**  
+Mantener un switcher dentro de la sesión activa que modifique el token sin requerir contraseña.
+
+**Razón:**  
+Garantiza la seguridad integral de la sesión, el principio de mínimo privilegio y la validez de las políticas Row Level Security (RLS) en la base de datos.
+
+---
+
+## D-26 — Auto-Seeding en Inicialización de Contenedores y Validación de Existencia de Usuario
+
+**Contexto:**  
+Al ejecutar `docker compose down -v && docker compose up --build`, el volumen de PostgreSQL se creaba en blanco ejecutando únicamente `0001_init.sql` (schema DDL). Esto dejaba las tablas vacías de usuarios y canales iniciales. Si el cliente en el navegador conservaba un token JWT previo en `localStorage`, cualquier petición a Copilot o mensajes intentaba referenciar un usuario inexistente provocando errores de clave foránea (`violates foreign key constraint rw_copilot_usage_rw_user_id_fkey`).
+
+**Decisión:**  
+1. **Migración de Seed Automático (`database/migrations/0002_seed.sql`):** Se ubicó el corpus inicial en el directorio `/docker-entrypoint-initdb.d/` de PostgreSQL. Así, ante cualquier `docker compose down -v` o nuevo despliegue, PostgreSQL ejecuta en orden `0001_init.sql` y `0002_seed.sql`, dejando la base de datos inmediatamente poblada con los 10 usuarios, 4 canales, membresías, mensajes y embeddings sin requerir scripts manuales.
+2. **Validación Preventiva de Existencia de Usuario (`DbContextHelper.validateUserExists`):** Se incorporó verificación de existencia activa en base de datos antes de fijar `app.current_user_id`. Si un token huérfano o caducado intenta operar en una base de datos reseteada, la API responde con `401 UNAUTHORIZED`, provocando que el frontend limpie `localStorage` y presente la pantalla de Login limpia.
+
+**Alternativa descartada:**  
+Obligar al operador a ejecutar manualmente un script de seed tras cada reinicio de Docker.
+
+**Razón:**  
+Cero fricción de despliegue ("Zero-Config Startup"), resiliencia inmediata ante borrado de volúmenes y manejo seguro de sesiones obsoletas.
+
+
+
+
 
 
 

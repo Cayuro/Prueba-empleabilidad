@@ -6,6 +6,7 @@ import com.riwi.messaging.rag.AiProvider;
 import com.riwi.messaging.rag.EmbeddingProvider;
 import com.riwi.messaging.rag.EmbeddingRepository;
 import com.riwi.messaging.rag.EmbeddingService;
+import com.riwi.messaging.rag.GeminiProvider;
 import com.riwi.messaging.security.DbContextHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,6 +69,18 @@ public class CopilotController {
         String query = (String) body.get("query");
         if (query == null || query.trim().isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Query string cannot be empty");
+        }
+
+        // Anti-Prompt-Injection & Jailbreak Guardrail:
+        String lowerQuery = query.toLowerCase();
+        if (lowerQuery.matches(".*(ignore previous|system prompt|forget all rules|developer mode|dan mode|jailbreak|reveal prompt|dame la clave|select \\* from|drop table|bypass).*")) {
+            return ResponseEntity.ok(Map.of(
+                    "answer", GeminiProvider.NOT_FOUND_MESSAGE,
+                    "citations", List.of(),
+                    "tokens_used", 10,
+                    "system_prompt_version", 1,
+                    "answer_found", false
+            ));
         }
 
         // 1. Candidate retrieval: Keyword / Full-Text search + nearest vector candidates

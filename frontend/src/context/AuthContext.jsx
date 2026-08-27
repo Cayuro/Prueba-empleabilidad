@@ -115,6 +115,17 @@ export function AuthProvider({ children }) {
   });
   const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem('rw_refresh_token') || null);
 
+  // Listen for session expiry event from API interceptor
+  useEffect(() => {
+    const handleExpired = () => {
+      setUser(null);
+      setToken(null);
+      setRefreshToken(null);
+    };
+    window.addEventListener('auth:expired', handleExpired);
+    return () => window.removeEventListener('auth:expired', handleExpired);
+  }, []);
+
   // Sync auth state to localStorage
   useEffect(() => {
     if (user && isValidJwt(token)) {
