@@ -952,6 +952,45 @@ Obligar al operador a ejecutar manualmente un script de seed tras cada reinicio 
 **Razón:**  
 Cero fricción de despliegue ("Zero-Config Startup"), resiliencia inmediata ante borrado de volúmenes y manejo seguro de sesiones obsoletas.
 
+---
+
+## D-27 — Función de Búsqueda de Usuarios `rw_fn_get_users` y Gestión de Miembros en Canales
+
+**Contexto:**  
+Al invocar `GET /api/users`, el backend intentaba consultar `rw_sp_get_users` como función escalar (`SELECT * FROM rw_sp_get_users(?, ?)`), provocando un error en PostgreSQL (`is a procedure, use CALL`). Adicionalmente, los creadores de canales requerían una interfaz fluida para seleccionar miembros al crear grupos privados y poder invitar personas en cualquier momento desde la cabecera del chat.
+
+**Decisión:**  
+1. **Función `rw_fn_get_users` en PostgreSQL:** Se implementó `rw_fn_get_users(TEXT, INT)` con `RETURNS TABLE` y permisos `EXECUTE` para `rw_app`. El backend `UserController.java` consume esta función de manera limpia con `JdbcTemplate`.
+2. **Selector de Miembros en Creación de Canales (`ZoneConversations.jsx`):** Al activar "Grupo Privado", el modal de creación despliega la lista interactiva de usuarios disponibles para seleccionar miembros iniciales antes de crear el chat. `App.jsx` realiza la creación del canal y la inserción de las membresías automáticamente.
+3. **Modal de Gestión y Miembros en Chat (`ZoneChat.jsx`):** En la cabecera del chat, el botón de miembros despliega un panel con pestañas:
+   - **Invitar:** Buscador en tiempo real y botón directo de "Invitar" que excluye automáticamente a los usuarios ya inscritos.
+   - **Miembros:** Visualización de todos los miembros activos del canal con sus roles (`Admin` / `Miembro`).
+
+**Alternativa descartada:**  
+Usar cursores JDBC manuales o restringir la invitación de miembros exclusivamente a scripts de administración.
+
+**Razón:**  
+Experiencia de usuario idéntica a aplicaciones de mensajería modernas (WhatsApp/Slack) respetando el modelo de seguridad RLS de PostgreSQL.
+
+---
+
+## D-28 — Normalización de Parámetros de Paginación Keyset en Cliente REST
+
+**Contexto:**  
+Al recargar la página o volver a iniciar sesión, `App.jsx` invocaba `api.getMessages(channelId, { limit: 30 }, token)`. Sin embargo, en `api.js`, la función `getMessages` esperaba parámetros posicionales (`channelId, cursor_created_at, cursor_id, limit, token`). Al recibir un objeto como segundo parámetro, `cursor_created_at` tomaba el valor `[object Object]` y `token` quedaba en `null`, provocando que la consulta a PostgreSQL fallara y retornara una lista vacía.
+
+**Decisión:**  
+1. **Firma Polimórfica en `api.js`:** Se refactorizó `getMessages` para interpretar dinámicamente si el segundo argumento es un objeto de opciones (`{ cursor_created_at, cursor_id, limit }`) o valores posicionales sueltos, extrayendo el token JWT correctamente en ambos casos.
+2. **Persistencia y Recuperación Garantizada:** Los mensajes enviados se persisten de forma inmediata en la tabla `rw_messages` de PostgreSQL y se recuperan de manera fiable tras cerrar sesión, recargar la página o alternar entre usuarios autorizados.
+
+**Alternativa descartada:**  
+Almacenar mensajes únicamente en la memoria volátil del frontend.
+
+**Razón:**  
+Garantiza la consistencia e integridad de datos requerida por el paradigma Smart Database y la rúbrica de persistencia.
+
+
+
 
 
 

@@ -291,6 +291,40 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS rw_fn_get_users(TEXT, INT);
+CREATE OR REPLACE FUNCTION rw_fn_get_users(
+    p_search TEXT DEFAULT '',
+    p_limit INT DEFAULT 50
+)
+RETURNS TABLE (
+    rw_id UUID,
+    rw_email VARCHAR(255),
+    rw_name VARCHAR(100),
+    rw_role VARCHAR(50),
+    rw_is_active BOOLEAN,
+    rw_created_at TIMESTAMPTZ,
+    rw_updated_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+    v_clean_limit INT;
+BEGIN
+    v_clean_limit := GREATEST(1, LEAST(COALESCE(p_limit, 50), 100));
+    RETURN QUERY
+        SELECT u.rw_id, u.rw_email, u.rw_name, u.rw_role, u.rw_is_active, u.rw_created_at, u.rw_updated_at
+        FROM rw_users u
+        WHERE u.rw_is_active = TRUE
+          AND (
+              p_search IS NULL
+              OR p_search = ''
+              OR u.rw_name ILIKE '%' || p_search || '%'
+              OR u.rw_email ILIKE '%' || p_search || '%'
+          )
+        ORDER BY u.rw_name ASC
+        LIMIT v_clean_limit;
+END;
+$$;
+
 DROP PROCEDURE IF EXISTS rw_sp_get_users(TEXT, INT, REFCURSOR);
 CREATE OR REPLACE PROCEDURE rw_sp_get_users(
     IN p_search TEXT,
@@ -793,6 +827,7 @@ GRANT EXECUTE ON FUNCTION rw_fn_is_channel_member(UUID, UUID) TO rw_app;
 GRANT EXECUTE ON FUNCTION rw_fn_is_channel_admin(UUID, UUID) TO rw_app;
 GRANT EXECUTE ON FUNCTION rw_fn_is_admin(UUID) TO rw_app;
 GRANT EXECUTE ON FUNCTION rw_fn_search_authorized_messages(UUID[]) TO rw_app;
+GRANT EXECUTE ON FUNCTION rw_fn_get_users(TEXT, INT) TO rw_app;
 GRANT EXECUTE ON FUNCTION rw_fn_create_user(VARCHAR, VARCHAR, VARCHAR, VARCHAR) TO rw_app;
 GRANT EXECUTE ON FUNCTION rw_fn_rotate_refresh_token(VARCHAR, VARCHAR) TO rw_app;
 GRANT EXECUTE ON FUNCTION rw_fn_revoke_refresh_token(VARCHAR) TO rw_app;

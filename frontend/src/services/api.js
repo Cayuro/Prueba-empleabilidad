@@ -152,8 +152,27 @@ export const api = {
   },
 
   // Keyset Pagination for message stream without OFFSET (D-06)
-  async getMessages(channelId, cursor_created_at = null, cursor_id = null, limit = 30, token = null) {
+  async getMessages(channelId, optionsOrCursor = null, cursorIdOrToken = null, limitOrToken = 30, maybeToken = null) {
     try {
+      let cursor_created_at = null;
+      let cursor_id = null;
+      let limit = 30;
+      let token = null;
+
+      if (optionsOrCursor && typeof optionsOrCursor === 'object') {
+        cursor_created_at = optionsOrCursor.cursor_created_at || null;
+        cursor_id = optionsOrCursor.cursor_id || null;
+        limit = optionsOrCursor.limit || 30;
+        token = cursorIdOrToken || localStorage.getItem('rw_access_token');
+      } else if (typeof optionsOrCursor === 'string') {
+        cursor_created_at = optionsOrCursor;
+        cursor_id = cursorIdOrToken;
+        limit = typeof limitOrToken === 'number' ? limitOrToken : 30;
+        token = typeof limitOrToken === 'string' ? limitOrToken : maybeToken;
+      } else {
+        token = cursorIdOrToken || localStorage.getItem('rw_access_token');
+      }
+
       const params = new URLSearchParams();
       if (cursor_created_at) params.append('cursor_created_at', cursor_created_at);
       if (cursor_id) params.append('cursor_id', cursor_id);

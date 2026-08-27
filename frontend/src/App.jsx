@@ -279,12 +279,22 @@ function MainApp() {
     }
   };
 
-  // Create a new channel
+  // Create a new channel with optional initial members
   const handleCreateChannel = async (channelData) => {
-    const newChan = await api.createChannel(channelData, token);
-    await loadChannelsAndStats();
+    const { member_ids, ...data } = channelData;
+    const newChan = await api.createChannel(data, token);
     if (newChan) {
       const id = newChan.rw_id || newChan.rw_channel_id;
+      if (Array.isArray(member_ids) && member_ids.length > 0) {
+        for (const memberId of member_ids) {
+          try {
+            await api.addChannelMember(id, memberId, 'member', token);
+          } catch (err) {
+            console.error('Error adding initial member to new channel:', err);
+          }
+        }
+      }
+      await loadChannelsAndStats();
       const name = newChan.rw_name || newChan.rw_channel_name;
       setActiveChannel({
         ...newChan,

@@ -35,7 +35,7 @@ public class UserController {
         dbContextHelper.setCurrentUser(jdbcTemplate, currentUserId);
 
         return jdbcTemplate.queryForList(
-                "SELECT rw_id, rw_email, rw_name, rw_role, rw_is_active, rw_created_at, rw_updated_at FROM rw_sp_get_users(?, ?)",
+                "SELECT rw_id, rw_email, rw_name, rw_role, rw_is_active, rw_created_at, rw_updated_at FROM rw_fn_get_users(?, ?)",
                 search,
                 Math.min(limit, 100)
         );

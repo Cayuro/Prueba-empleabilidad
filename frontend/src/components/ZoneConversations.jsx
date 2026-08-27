@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Search, Plus, Hash, Lock, Users, MessageSquare, Check, Sparkles, FileText, X } from 'lucide-react';
+import { Search, Plus, Hash, Lock, Users, MessageSquare, Check, Sparkles, FileText, X, UserPlus } from 'lucide-react';
 
 export default function ZoneConversations({
   channels,
@@ -18,11 +18,30 @@ export default function ZoneConversations({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Full-text message search state
   const [messageSearchResults, setMessageSearchResults] = useState([]);
   const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+
+  // Load available users for private channel invitation upon opening create modal
+  useEffect(() => {
+    if (showCreateModal && token) {
+      setIsLoadingUsers(true);
+      api.getUsers('', token)
+        .then((users) => {
+          const others = (users || []).filter((u) => (u.rw_id || u.id) !== user?.id);
+          setAvailableUsers(others);
+        })
+        .catch((e) => console.error('Error fetching users for creation:', e))
+        .finally(() => setIsLoadingUsers(false));
+    } else {
+      setSelectedMemberIds([]);
+    }
+  }, [showCreateModal, token, user?.id]);
 
   // Perform full-text message search when search term changes and in search mode
   useEffect(() => {
@@ -65,6 +84,12 @@ export default function ZoneConversations({
   const publicCount = channels.filter((c) => !(c.rw_channel_is_private !== undefined ? c.rw_channel_is_private : c.rw_is_private)).length;
   const privateCount = channels.filter((c) => (c.rw_channel_is_private !== undefined ? c.rw_channel_is_private : c.rw_is_private)).length;
 
+  const toggleMemberSelection = (userId) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
   // Handle new channel submission
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
@@ -75,9 +100,11 @@ export default function ZoneConversations({
       await onCreateChannel({
         name: newChannelName.trim().toLowerCase().replace(/\s+/g, '-'),
         is_private: isPrivate,
+        member_ids: isPrivate ? selectedMemberIds : [],
       });
       setNewChannelName('');
       setIsPrivate(false);
+      setSelectedMemberIds([]);
       setShowCreateModal(false);
     } finally {
       setIsSubmitting(false);
@@ -123,7 +150,7 @@ export default function ZoneConversations({
           {/* New Channel Button */}
           <button
             onClick={() => setShowCreateModal(!showCreateModal)}
-            className="p-1.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white dark:hover:bg-emerald-500 dark:hover:text-black transition-colors"
+            className="p-1.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white dark:hover:bg-emerald-500 dark:hover:text-black transition-colors cursor-pointer shadow-xs"
             title={t.newChannel}
           >
             <Plus size={16} />
@@ -143,7 +170,7 @@ export default function ZoneConversations({
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              className="absolute right-2.5 top-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
             >
               <X size={14} />
             </button>
@@ -154,9 +181,9 @@ export default function ZoneConversations({
         <div className="flex space-x-1.5 pt-0.5 overflow-x-auto pb-0.5 scrollbar-none">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 cursor-pointer ${
               activeTab === 'all'
-                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
+                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black shadow-xs'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
             }`}
           >
@@ -165,9 +192,9 @@ export default function ZoneConversations({
           </button>
           <button
             onClick={() => setActiveTab('public')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 cursor-pointer ${
               activeTab === 'public'
-                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
+                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black shadow-xs'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
             }`}
           >
@@ -176,9 +203,9 @@ export default function ZoneConversations({
           </button>
           <button
             onClick={() => setActiveTab('private')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 cursor-pointer ${
               activeTab === 'private'
-                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
+                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black shadow-xs'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
             }`}
           >
@@ -188,9 +215,9 @@ export default function ZoneConversations({
           </button>
           <button
             onClick={() => setActiveTab('search')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 cursor-pointer ${
               activeTab === 'search'
-                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
+                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black shadow-xs'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
             }`}
             title="Búsqueda Full-Text en todos los mensajes"
@@ -203,9 +230,16 @@ export default function ZoneConversations({
 
       {/* New Channel Inline Modal */}
       {showCreateModal && (
-        <form onSubmit={handleCreateSubmit} className="p-3 bg-neutral-100/80 dark:bg-neutral-900/80 border-b border-light-border dark:border-dark-border space-y-2">
-          <div className="text-xs font-bold text-light-text dark:text-dark-text">
-            {t.createChannelTitle}
+        <form onSubmit={handleCreateSubmit} className="p-3.5 bg-neutral-100/90 dark:bg-neutral-900/90 border-b border-light-border dark:border-dark-border space-y-2.5 shadow-md">
+          <div className="flex items-center justify-between text-xs font-bold text-light-text dark:text-dark-text">
+            <span>{t.createChannelTitle}</span>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(false)}
+              className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer"
+            >
+              <X size={14} />
+            </button>
           </div>
           <input
             type="text"
@@ -224,18 +258,65 @@ export default function ZoneConversations({
             />
             <span className="font-semibold">{t.isPrivateLabel}</span>
           </label>
+
+          {/* If private channel, allow selecting initial members */}
+          {isPrivate && (
+            <div className="space-y-1.5 pt-1 border-t border-neutral-200 dark:border-neutral-800">
+              <div className="text-[11px] font-bold text-light-text dark:text-dark-text flex items-center justify-between">
+                <span>Invitar miembros iniciales:</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                  {selectedMemberIds.length} seleccionados
+                </span>
+              </div>
+              <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                {isLoadingUsers ? (
+                  <div className="text-center py-2 text-[10px] text-neutral-500">Cargando usuarios...</div>
+                ) : availableUsers.length === 0 ? (
+                  <div className="text-center py-2 text-[10px] text-neutral-500">No hay otros usuarios disponibles</div>
+                ) : (
+                  availableUsers.map((u) => {
+                    const uid = u.rw_id || u.id;
+                    const isSelected = selectedMemberIds.includes(uid);
+                    return (
+                      <button
+                        key={uid}
+                        type="button"
+                        onClick={() => toggleMemberSelection(uid)}
+                        className={`w-full p-1.5 rounded-lg border text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-light-card dark:bg-dark-card border-light-border dark:border-dark-border text-light-text dark:text-dark-text hover:bg-neutral-200/50 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2 truncate">
+                          <div className="font-semibold text-[11px] truncate">{u.rw_name || u.name}</div>
+                          <div className="text-[9px] text-light-muted dark:text-dark-muted truncate">{u.rw_email || u.email}</div>
+                        </div>
+                        <div className={`w-4 h-4 rounded flex items-center justify-center border text-[10px] shrink-0 ${
+                          isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-neutral-300 dark:border-neutral-600'
+                        }`}>
+                          {isSelected && <Check size={10} />}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end space-x-2 pt-1">
             <button
               type="button"
               onClick={() => setShowCreateModal(false)}
-              className="px-2.5 py-1 text-xs rounded text-light-muted dark:text-dark-muted hover:bg-neutral-200 dark:hover:bg-neutral-800"
+              className="px-2.5 py-1 text-xs rounded text-light-muted dark:text-dark-muted hover:bg-neutral-200 dark:hover:bg-neutral-800 cursor-pointer"
             >
               {t.cancelBtn}
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !newChannelName.trim()}
-              className="px-3 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black hover:opacity-90 disabled:opacity-50"
+              className="px-3 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black hover:opacity-90 disabled:opacity-50 cursor-pointer shadow-xs"
             >
               {t.createChannelBtn}
             </button>
@@ -271,7 +352,7 @@ export default function ZoneConversations({
                       onSelectChannel(targetChan);
                     }
                   }}
-                  className="w-full text-left p-3 hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80 transition-colors space-y-1"
+                  className="w-full text-left p-3 hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80 transition-colors space-y-1 cursor-pointer"
                 >
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate">
@@ -319,7 +400,7 @@ export default function ZoneConversations({
                 <button
                   key={channelId}
                   onClick={() => onSelectChannel({ ...channel, rw_id: channelId, rw_name: channelName, rw_is_private: isPrivateChan })}
-                  className={`w-full text-left px-3 py-2.5 flex items-center space-x-3 transition-colors ${
+                  className={`w-full text-left px-3 py-2.5 flex items-center space-x-3 transition-colors cursor-pointer ${
                     isActive
                       ? 'bg-emerald-500/15 dark:bg-emerald-500/20 border-l-4 border-emerald-600 dark:border-emerald-400'
                       : 'hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80'
