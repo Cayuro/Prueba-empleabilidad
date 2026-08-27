@@ -341,9 +341,40 @@ function MainApp() {
     }, 4000);
   };
 
-  // Collapsible zones state
+  // Collapsible zones state (on small screens start with copilot closed)
   const [showChannels, setShowChannels] = useState(true);
-  const [showCopilot, setShowCopilot] = useState(true);
+  const [showCopilot, setShowCopilot] = useState(false);
+
+  // Toggle channels smoothly across mobile and desktop
+  const handleToggleChannels = () => {
+    setShowChannels((prev) => {
+      const next = !prev;
+      if (next && typeof window !== 'undefined' && window.innerWidth < 768) {
+        setShowCopilot(false);
+      }
+      return next;
+    });
+  };
+
+  // Toggle copilot smoothly across mobile and desktop
+  const handleToggleCopilot = () => {
+    setShowCopilot((prev) => {
+      const next = !prev;
+      if (next && typeof window !== 'undefined' && window.innerWidth < 768) {
+        setShowChannels(false);
+      }
+      return next;
+    });
+  };
+
+  // Channel selection with mobile drawer auto-close
+  const handleSelectChannel = (chan) => {
+    setActiveChannel(chan);
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setShowChannels(false);
+      setShowCopilot(false);
+    }
+  };
 
   if (!isAuthenticated) {
     return <LoginModal />;
@@ -355,47 +386,62 @@ function MainApp() {
       <Header
         onOpenProfile={() => setIsProfileOpen(true)}
         showChannels={showChannels}
-        onToggleChannels={() => setShowChannels((prev) => !prev)}
+        onToggleChannels={handleToggleChannels}
         showCopilot={showCopilot}
-        onToggleCopilot={() => setShowCopilot((prev) => !prev)}
+        onToggleCopilot={handleToggleCopilot}
       />
 
       {/* Dynamic Collapsible 3-Zone Layout */}
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex overflow-hidden relative">
         {/* Zone 1: Conversations & Channels List */}
         {showChannels && (
-          <section className="w-80 md:w-80 lg:w-84 shrink-0 h-full overflow-hidden border-r border-light-border dark:border-dark-border transition-all duration-200">
+          <section className={`h-full overflow-hidden border-r border-light-border dark:border-dark-border transition-all duration-200 ${
+            showCopilot ? 'hidden md:block md:w-72 lg:w-80 shrink-0' : 'w-full md:w-72 lg:w-80 shrink-0'
+          }`}>
             <ZoneConversations
               channels={channels}
               activeChannelId={activeChannel?.rw_id}
-              onSelectChannel={setActiveChannel}
+              onSelectChannel={handleSelectChannel}
               onCreateChannel={handleCreateChannel}
               isLoading={isLoadingChannels}
             />
           </section>
         )}
 
-        {/* Zone 2: Chat Stream & Message History (Expands dynamically to take all remaining space) */}
-        <section className="flex-1 min-w-0 h-full overflow-hidden flex flex-col">
-          <ZoneChat
-            activeChannel={activeChannel}
-            messages={messages}
-            isLoadingHistory={isLoadingHistory}
-            onSendMessage={handleSendMessage}
-            onRetryMessage={handleRetryMessage}
-            onDeleteMessage={handleDeleteMessage}
-            onEditMessage={handleEditMessage}
-            onLoadOlderMessages={handleLoadOlderMessages}
-            hasMoreHistory={hasMoreHistory}
-            highlightedMessageId={highlightedMessageId}
-          />
-        </section>
+        {/* Zone 2: Chat Stream & Message History */}
+        {(!showCopilot || (typeof window !== 'undefined' && window.innerWidth >= 768)) && 
+         (!showChannels || (typeof window !== 'undefined' && window.innerWidth >= 768)) && (
+          <section className="flex-1 min-w-0 h-full overflow-hidden flex flex-col">
+            <ZoneChat
+              activeChannel={activeChannel}
+              messages={messages}
+              isLoadingHistory={isLoadingHistory}
+              onSendMessage={handleSendMessage}
+              onRetryMessage={handleRetryMessage}
+              onDeleteMessage={handleDeleteMessage}
+              onEditMessage={handleEditMessage}
+              onLoadOlderMessages={handleLoadOlderMessages}
+              hasMoreHistory={hasMoreHistory}
+              highlightedMessageId={highlightedMessageId}
+              onBackToChannels={() => {
+                setShowChannels(true);
+                setShowCopilot(false);
+              }}
+            />
+          </section>
+        )}
 
         {/* Zone 3: Copilot AI Assistant Panel */}
         {showCopilot && (
-          <section className="w-80 md:w-96 lg:w-[400px] shrink-0 h-full overflow-hidden border-l border-light-border dark:border-dark-border transition-all duration-200">
+          <section className="w-full md:w-80 lg:w-[400px] shrink-0 h-full overflow-hidden border-l border-light-border dark:border-dark-border transition-all duration-200">
             <ZoneCopilot
-              onSelectCitation={handleSelectCitation}
+              onSelectCitation={(msgId) => {
+                handleSelectCitation(msgId);
+                if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  setShowCopilot(false);
+                  setShowChannels(false);
+                }
+              }}
               onQueryCopilot={handleQueryCopilot}
               copilotHistory={copilotHistory}
               usageStats={usageStats}

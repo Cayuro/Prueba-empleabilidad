@@ -989,6 +989,28 @@ Almacenar mensajes únicamente en la memoria volátil del frontend.
 **Razón:**  
 Garantiza la consistencia e integridad de datos requerida por el paradigma Smart Database y la rúbrica de persistencia.
 
+---
+
+## D-29 — Adaptabilidad Responsive Móvil y Navegación Contextual
+
+**Contexto:**  
+En pantallas móviles o reducidas (`viewport < 768px`), desplegar simultáneamente las 3 zonas (Canales, Chat y Copiloto IA) producía sobreposición y reducción extrema del espacio de lectura. El usuario requería poder interactuar limpiamente con el chat, la lista de canales o el copiloto de IA de forma fluida y con la mínima alteración al código.
+
+**Decisión:**  
+1. **Navegación Móvil de Vista Única Adaptativa (`App.jsx`):**
+   - En pantallas móviles, al seleccionar un canal de la lista, la vista transiciona automáticamente al Chat de pantalla completa.
+   - En [`ZoneChat.jsx`](file:///home/cohorte6/Desktop/prueba_desempeño/frontend/src/components/ZoneChat.jsx), se agregó un botón de retroceso (`< ChevronLeft`) visible únicamente en móviles (`md:hidden`) para regresar al listado de canales en cualquier momento.
+   - Al pulsar el botón "Copiloto IA" en la cabecera, se despliega el asistente a ancho completo para consultar información y citaciones cómodamente.
+2. **Consistencia en Escritorio:**
+   - En pantallas medianas y grandes (`md` y `lg`), se preserva intacto el layout simultáneo de 3 zonas con botones independientes de colapsado.
+
+**Alternativa descartada:**  
+Crear rutas de navegación separadas (`react-router`) o duplicar componentes para móviles.
+
+**Razón:**  
+Máxima fluidez, mínima complejidad de código (KISS) y soporte responsive nativo con Tailwind CSS.
+
+
 
 
 

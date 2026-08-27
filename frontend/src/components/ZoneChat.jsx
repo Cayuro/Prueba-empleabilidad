@@ -19,6 +19,7 @@ import {
   Search,
   Shield,
   UserCheck,
+  ChevronLeft,
 } from 'lucide-react';
 
 export default function ZoneChat({
@@ -32,6 +33,7 @@ export default function ZoneChat({
   onLoadOlderMessages,
   hasMoreHistory,
   highlightedMessageId,
+  onBackToChannels,
 }) {
   const { t } = useLanguage();
   const { user, token } = useAuth();
@@ -211,34 +213,43 @@ export default function ZoneChat({
   return (
     <div className="flex-1 flex flex-col h-full bg-[#efeae2] dark:bg-[#0b141a] relative select-none">
       {/* Active Channel Top Bar */}
-      <div className="px-4 py-2.5 border-b border-neutral-300 dark:border-neutral-800 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between shadow-xs z-10">
-        <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-            {isPrivate ? <Lock size={16} /> : <Users size={16} />}
+      <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-neutral-300 dark:border-neutral-800 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between shadow-xs z-10">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+          {onBackToChannels && (
+            <button
+              onClick={onBackToChannels}
+              className="md:hidden p-1 -ml-1 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer shrink-0"
+              title="Volver a chats"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs shrink-0">
+            {isPrivate ? <Lock size={15} /> : <Users size={15} />}
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-[#111b21] dark:text-[#e9edef] flex items-center space-x-1.5">
-              <span>{channelDisplayName}</span>
+          <div className="min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-[#111b21] dark:text-[#e9edef] flex items-center space-x-1.5 truncate">
+              <span className="truncate">{channelDisplayName}</span>
               {isPrivate && (
-                <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-500/20 text-amber-700 dark:text-amber-400">
+                <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0">
                   Privado
                 </span>
               )}
             </h3>
-            <span className="text-[11px] text-[#667781] dark:text-[#8696a0]">
-              {isPrivate ? 'Grupo Privado • Miembros autorizados' : 'Canal Público • Acceso abierto'}
+            <span className="text-[10px] sm:text-[11px] text-[#667781] dark:text-[#8696a0] truncate block">
+              {isPrivate ? 'Grupo Privado • Miembros' : 'Canal Público'}
             </span>
           </div>
         </div>
 
         {/* Channel Actions */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 shrink-0 ml-2">
           <button
             onClick={handleOpenInvite}
-            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:text-black dark:hover:bg-emerald-400 transition-colors shadow-xs cursor-pointer"
+            className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:text-black dark:hover:bg-emerald-400 transition-colors shadow-xs cursor-pointer"
             title="Administrar e invitar miembros a este grupo"
           >
-            <UserPlus size={14} />
+            <UserPlus size={13} />
             <span className="hidden sm:inline">Miembros ({currentMembers.length || 1})</span>
           </button>
         </div>
