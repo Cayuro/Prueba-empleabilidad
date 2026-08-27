@@ -140,6 +140,17 @@ export const api = {
     }, token);
   },
 
+  // Full-text search with ts_headline across authorized channels under PostgreSQL RLS
+  async searchMessages(query, limit = 20, token) {
+    try {
+      const data = await request(`/api/messages/search?q=${encodeURIComponent(query)}&limit=${limit}`, { method: 'GET' }, token);
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.error('Error searching messages:', e);
+      return [];
+    }
+  },
+
   // Query Copilot RAG endpoint
   async queryCopilot(query, retrievalLimit = 5, token) {
     return await request('/api/copilot/query', {

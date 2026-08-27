@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Search, Plus, Hash, Lock, Users, MessageSquare, Check, Shield } from 'lucide-react';
+import { api } from '../services/api';
+import { Search, Plus, Hash, Lock, Users, MessageSquare, Check, Sparkles, FileText, X } from 'lucide-react';
 
 export default function ZoneConversations({
   channels,
@@ -11,13 +12,43 @@ export default function ZoneConversations({
   isLoading,
 }) {
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'public', 'private'
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'public', 'private', 'search'
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Full-text message search state
+  const [messageSearchResults, setMessageSearchResults] = useState([]);
+  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+
+  // Perform full-text message search when search term changes and in search mode
+  useEffect(() => {
+    if (!searchTerm.trim() || activeTab !== 'search') {
+      setMessageSearchResults([]);
+      return;
+    }
+
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      setIsSearchingMessages(true);
+      try {
+        const results = await api.searchMessages(searchTerm.trim(), 15, token);
+        if (isMounted) setMessageSearchResults(results || []);
+      } catch (e) {
+        console.error('Error searching messages:', e);
+      } finally {
+        if (isMounted) setIsSearchingMessages(false);
+      }
+    }, 300);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [searchTerm, activeTab, token]);
 
   // Filter channels based on search input and active tab (all, public, private)
   const filteredChannels = channels.filter((c) => {
@@ -25,7 +56,7 @@ export default function ZoneConversations({
     const matchesSearch = channelName.toLowerCase().includes(searchTerm.toLowerCase());
     const isPrivateChan = c.rw_channel_is_private !== undefined ? c.rw_channel_is_private : c.rw_is_private;
 
-    if (!matchesSearch) return false;
+    if (!matchesSearch && activeTab !== 'search') return false;
     if (activeTab === 'public') return !isPrivateChan;
     if (activeTab === 'private') return isPrivateChan;
     return true;
@@ -65,14 +96,14 @@ export default function ZoneConversations({
       'bg-orange-600 text-white',
     ];
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
+    for (let i = 0; i < (name || '').length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
     return colors[Math.abs(hash) % colors.length];
   };
 
   return (
-    <div className="flex flex-col h-full bg-light-card dark:bg-dark-card border-r border-light-border dark:border-dark-border select-none">
+    <div className="flex flex-col h-full bg-light-card dark:bg-dark-card select-none">
       {/* Header & New Chat Action */}
       <div className="p-3 border-b border-light-border dark:border-dark-border space-y-2.5">
         <div className="flex items-center justify-between">
@@ -99,23 +130,31 @@ export default function ZoneConversations({
           </button>
         </div>
 
-        {/* Search Input */}
+        {/* Search Input with quick clear */}
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-2.5 text-light-muted dark:text-dark-muted" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={t.searchChannelsPlaceholder}
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
+            placeholder={activeTab === 'search' ? t.searchMessages : t.searchChannelsPlaceholder}
+            className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
           />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2.5 top-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
 
-        {/* WhatsApp-Style Filter Pills (Todos, Públicos, Privados) */}
-        <div className="flex space-x-1.5 pt-0.5">
+        {/* WhatsApp-Style Filter Pills (Todos, Públicos, Privados, Mensajes) */}
+        <div className="flex space-x-1.5 pt-0.5 overflow-x-auto pb-0.5 scrollbar-none">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
               activeTab === 'all'
                 ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
@@ -126,7 +165,7 @@ export default function ZoneConversations({
           </button>
           <button
             onClick={() => setActiveTab('public')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
               activeTab === 'public'
                 ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
@@ -137,7 +176,7 @@ export default function ZoneConversations({
           </button>
           <button
             onClick={() => setActiveTab('private')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
               activeTab === 'private'
                 ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
@@ -146,6 +185,18 @@ export default function ZoneConversations({
             <Lock size={10} />
             <span>Privados</span>
             <span className="text-[10px] opacity-80">({privateCount})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors flex items-center space-x-1 shrink-0 ${
+              activeTab === 'search'
+                ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
+            }`}
+            title="Búsqueda Full-Text en todos los mensajes"
+          >
+            <FileText size={11} />
+            <span>Mensajes</span>
           </button>
         </div>
       </div>
@@ -192,73 +243,126 @@ export default function ZoneConversations({
         </form>
       )}
 
-      {/* Channels List Styled as WhatsApp Chats */}
-      <div className="flex-1 overflow-y-auto divide-y divide-light-border/30 dark:divide-dark-border/30">
-        {isLoading ? (
-          <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
-            {t.loadingChannels}
-          </div>
-        ) : filteredChannels.length === 0 ? (
-          <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
-            {t.noChannelsFound}
-          </div>
-        ) : (
-          filteredChannels.map((channel) => {
-            const channelId = channel.rw_channel_id || channel.rw_id;
-            const channelName = channel.rw_channel_name || channel.rw_name;
-            const isPrivateChan = channel.rw_channel_is_private !== undefined ? channel.rw_channel_is_private : channel.rw_is_private;
-            const unreadCount = channel.rw_unread_count !== undefined ? channel.rw_unread_count : (channel.unread_count || 0);
-            const lastMsg = channel.rw_last_message_content || channel.last_message || '';
-            const lastAuthor = channel.rw_last_message_author_name || '';
-            const isActive = channelId === activeChannelId;
+      {/* Main Content Area: Search Mode vs Channels List */}
+      {activeTab === 'search' ? (
+        <div className="flex-1 overflow-y-auto divide-y divide-light-border/30 dark:divide-dark-border/30">
+          {!searchTerm.trim() ? (
+            <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
+              Escribe en el buscador para buscar palabras dentro de tus conversaciones.
+            </div>
+          ) : isSearchingMessages ? (
+            <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
+              Buscando coincidencias full-text...
+            </div>
+          ) : messageSearchResults.length === 0 ? (
+            <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
+              {t.noSearchResults}
+            </div>
+          ) : (
+            messageSearchResults.map((result) => {
+              const targetChan = channels.find((c) => (c.rw_channel_id || c.rw_id) === result.rw_channel_id);
+              const chanName = targetChan?.rw_channel_name || targetChan?.rw_name || result.channel_name || 'Canal';
 
-            return (
-              <button
-                key={channelId}
-                onClick={() => onSelectChannel({ ...channel, rw_id: channelId, rw_name: channelName, rw_is_private: isPrivateChan })}
-                className={`w-full text-left px-3 py-2.5 flex items-center space-x-3 transition-colors ${
-                  isActive
-                    ? 'bg-emerald-500/15 dark:bg-emerald-500/20 border-l-4 border-emerald-600 dark:border-emerald-400'
-                    : 'hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80'
-                }`}
-              >
-                {/* WhatsApp Group Avatar Circle */}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getAvatarColor(channelName)}`}>
-                  {isPrivateChan ? <Lock size={16} /> : <Users size={16} />}
-                </div>
+              return (
+                <button
+                  key={result.rw_id}
+                  onClick={() => {
+                    if (targetChan) {
+                      onSelectChannel(targetChan);
+                    }
+                  }}
+                  className="w-full text-left p-3 hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80 transition-colors space-y-1"
+                >
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate">
+                      #{chanName}
+                    </span>
+                    <span className="text-[10px] text-light-muted dark:text-dark-muted">
+                      {result.rw_created_at ? new Date(result.rw_created_at).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                  <div
+                    className="text-xs text-light-text dark:text-dark-text leading-relaxed line-clamp-2"
+                    dangerouslySetInnerHTML={{
+                      __html: result.headline || result.rw_content || '',
+                    }}
+                  />
+                  <div className="text-[10px] text-light-muted dark:text-dark-muted">
+                    Por: {result.author_name || 'Miembro'}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto divide-y divide-light-border/30 dark:divide-dark-border/30">
+          {isLoading ? (
+            <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
+              {t.loadingChannels}
+            </div>
+          ) : filteredChannels.length === 0 ? (
+            <div className="p-6 text-center text-xs text-light-muted dark:text-dark-muted">
+              {t.noChannelsFound}
+            </div>
+          ) : (
+            filteredChannels.map((channel) => {
+              const channelId = channel.rw_channel_id || channel.rw_id;
+              const channelName = channel.rw_channel_name || channel.rw_name;
+              const isPrivateChan = channel.rw_channel_is_private !== undefined ? channel.rw_channel_is_private : channel.rw_is_private;
+              const unreadCount = channel.rw_unread_count !== undefined ? channel.rw_unread_count : (channel.unread_count || 0);
+              const lastMsg = channel.rw_last_message_content || channel.last_message || '';
+              const lastAuthor = channel.rw_last_message_author_name || '';
+              const isActive = channelId === activeChannelId;
 
-                {/* Channel Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-1.5 truncate">
-                      <span className={`text-xs font-bold truncate ${isActive ? 'text-emerald-700 dark:text-emerald-400' : 'text-light-text dark:text-dark-text'}`}>
-                        {channelName}
-                      </span>
-                      {isPrivateChan && (
-                        <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                          Privado
+              return (
+                <button
+                  key={channelId}
+                  onClick={() => onSelectChannel({ ...channel, rw_id: channelId, rw_name: channelName, rw_is_private: isPrivateChan })}
+                  className={`w-full text-left px-3 py-2.5 flex items-center space-x-3 transition-colors ${
+                    isActive
+                      ? 'bg-emerald-500/15 dark:bg-emerald-500/20 border-l-4 border-emerald-600 dark:border-emerald-400'
+                      : 'hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80'
+                  }`}
+                >
+                  {/* WhatsApp Group Avatar Circle */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getAvatarColor(channelName)}`}>
+                    {isPrivateChan ? <Lock size={16} /> : <Users size={16} />}
+                  </div>
+
+                  {/* Channel Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1.5 truncate">
+                        <span className={`text-xs font-bold truncate ${isActive ? 'text-emerald-700 dark:text-emerald-400' : 'text-light-text dark:text-dark-text'}`}>
+                          {channelName}
+                        </span>
+                        {isPrivateChan && (
+                          <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                            Privado
+                          </span>
+                        )}
+                      </div>
+
+                      {unreadCount > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black shrink-0">
+                          {unreadCount}
                         </span>
                       )}
                     </div>
 
-                    {unreadCount > 0 && (
-                      <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black shrink-0">
-                        {unreadCount}
-                      </span>
-                    )}
+                    {/* Last Message Preview */}
+                    <div className="flex items-center space-x-1 text-[11px] text-light-muted dark:text-dark-muted truncate mt-0.5">
+                      {lastAuthor && <span className="font-semibold text-neutral-500 dark:text-neutral-400">{lastAuthor}:</span>}
+                      <span className="truncate">{lastMsg || 'Sin mensajes aún'}</span>
+                    </div>
                   </div>
-
-                  {/* Last Message Preview */}
-                  <div className="flex items-center space-x-1 text-[11px] text-light-muted dark:text-dark-muted truncate mt-0.5">
-                    {lastAuthor && <span className="font-semibold text-neutral-500 dark:text-neutral-400">{lastAuthor}:</span>}
-                    <span className="truncate">{lastMsg || 'Sin mensajes aún'}</span>
-                  </div>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

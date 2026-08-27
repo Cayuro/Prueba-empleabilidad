@@ -14,11 +14,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-// Google Gemini API provider with secure contextual fallback and zero technical error leakage
+// Google Gemini API provider with strict context validation, anti-hallucination guardrails, and zero technical error leakage
 @Component
 @ConditionalOnProperty(name = "ai.provider", havingValue = "gemini")
 public class GeminiProvider implements AiProvider {
+
+    public static final String NOT_FOUND_MESSAGE = "⚠️ No encontré esa información en los canales autorizados.";
 
     private static final Logger log = LoggerFactory.getLogger(GeminiProvider.class);
     private final RestTemplate restTemplate = new RestTemplate();
@@ -48,14 +51,14 @@ public class GeminiProvider implements AiProvider {
     @Override
     public String generateCompletion(String systemPrompt, String context, String query) {
         if (context == null || context.isBlank()) {
-            return "Contexto autorizado insuficiente para responder a esta consulta. Como asistente interno de Riwi, únicamente tengo permitido responder sobre los temas discutidos en tus canales y conversaciones autorizadas.";
+            return NOT_FOUND_MESSAGE;
         }
 
         // Strict out-of-context guardrails: reject math, generic facts, or general domain questions
         String cleanQuery = query.toLowerCase().trim();
         if (cleanQuery.matches(".*(\\d+\\s*[+\\-*/^%]\\s*\\d+|cuanto es|cuánto es|calcular|suma|resta|multiplica|divide).*") ||
-            cleanQuery.matches(".*(capital de|clima en|chiste|cuentame un cuento|poema|quien es el presidente|receta).*")) {
-            return "Contexto autorizado insuficiente para responder a esta consulta. Como asistente interno de Riwi, únicamente tengo permitido responder sobre los temas discutidos en tus canales y conversaciones autorizadas.";
+            cleanQuery.matches(".*(capital de|clima en|chiste|cuentame un cuento|poema|quien es el presidente|receta|dime algo).*")) {
+            return NOT_FOUND_MESSAGE;
         }
 
         // Attempt completion with Google Gemini if API key is provided
@@ -71,11 +74,11 @@ public class GeminiProvider implements AiProvider {
                 headers.setContentType(MediaType.APPLICATION_JSON);
 
                 String prompt = String.format(
-                        "%s\n\nREGLA ESTRICTA E INVIOLABLE:\n" +
-                        "Responde ÚNICAMENTE utilizando los hechos explícitos del siguiente contexto de mensajes de chat autorizados.\n" +
-                        "Si la pregunta es genérica, de matemáticas, programación general, chistes, clima o cualquier tema no mencionado directamente en el contexto, DEBES responder exactamente:\n" +
-                        "'Contexto autorizado insuficiente para responder a esta consulta. Como asistente interno de Riwi, únicamente tengo permitido responder sobre los temas discutidos en tus canales y conversaciones autorizadas.'\n\n" +
-                        "Contexto de la conversación:\n%s\n\nPregunta del usuario:\n%s",
+                        "%s\n\nREGLAS ESTRICTAS DE VALIDACIÓN Y RELEVANCIA (INVIOLABLES):\n" +
+                        "1. VALIDACIÓN DE RELEVANCIA: Antes de responder, evalúa si el contexto recuperado contiene información que responda directamente la pregunta del usuario.\n" +
+                        "2. Si ningún fragmento del contexto contiene esa información, NO inventes, NO combines fragmentos no relacionados para simular una respuesta, ni intentes adivinar. En su lugar, responde EXACTAMENTE con: '⚠️ No encontré esa información en los canales autorizados.'\n" +
+                        "3. Responde de forma concisa y profesional basándote únicamente en los fragmentos verdaderamente pertinentes.\n\n" +
+                        "Contexto de conversaciones autorizadas:\n%s\n\nPregunta del usuario:\n%s",
                         systemPrompt, context, query
                 );
 
@@ -84,7 +87,7 @@ public class GeminiProvider implements AiProvider {
                 Map<String, Object> requestBody = new HashMap<>();
                 requestBody.put("contents", List.of(contentObj));
                 requestBody.put("generationConfig", Map.of(
-                        "temperature", 0.1,
+                        "temperature", 0.0,
                         "maxOutputTokens", 600
                 ));
 
@@ -109,9 +112,23 @@ public class GeminiProvider implements AiProvider {
         return synthesizeAuthorizedContext(context, query);
     }
 
-    // Local extractive synthesizer from RLS-authorized context
+    // Local extractive synthesizer from RLS-authorized context with strict stopword filtering
     private String synthesizeAuthorizedContext(String context, String query) {
-        String[] qTokens = query.toLowerCase().replaceAll("[^a-záéíóúñ0-9\\s]", " ").split("\\s+");
+        Set<String> stopWords = Set.of(
+                "reunion", "reunión", "canal", "canales", "mensaje", "mensajes", "sobre", "acuerdo", "acordo", "acordó",
+                "cual", "cuál", "cuales", "cuáles", "hola", "para", "como", "cómo", "este", "esta", "estos", "estas",
+                "hacer", "decir", "tratar", "trataron", "tema", "temas", "hablo", "habló", "hablaron", "saber", "quiero",
+                "informacion", "información", "discutio", "discutió", "acuerdos"
+        );
+
+        String[] rawTokens = query.toLowerCase().replaceAll("[^a-záéíóúñ0-9\\s]", " ").split("\\s+");
+        List<String> distinctiveQueryTokens = new ArrayList<>();
+        for (String tok : rawTokens) {
+            if (tok.length() >= 4 && !stopWords.contains(tok)) {
+                distinctiveQueryTokens.add(tok);
+            }
+        }
+
         String[] lines = context.split("\n");
         List<String> matchingPoints = new ArrayList<>();
 
@@ -121,29 +138,38 @@ public class GeminiProvider implements AiProvider {
             if (l.isEmpty()) continue;
 
             String lowerLine = l.toLowerCase();
-            int matches = 0;
-            for (String tok : qTokens) {
-                if (tok.length() >= 3 && lowerLine.contains(tok)) {
-                    matches++;
+            if (!distinctiveQueryTokens.isEmpty()) {
+                int matches = 0;
+                for (String tok : distinctiveQueryTokens) {
+                    if (lowerLine.contains(tok)) {
+                        matches++;
+                    }
                 }
-            }
-            if (matches > 0) {
-                matchingPoints.add(l);
-            }
-        }
-
-        if (matchingPoints.isEmpty()) {
-            for (String line : lines) {
-                String l = line.trim();
-                if (l.startsWith("- ")) l = l.substring(2).trim();
-                if (!l.isEmpty() && matchingPoints.size() < 3) {
+                if (matches > 0) {
+                    matchingPoints.add(l);
+                }
+            } else {
+                // If query only contains common words, match on length >= 4
+                int matches = 0;
+                for (String tok : rawTokens) {
+                    if (tok.length() >= 4 && lowerLine.contains(tok)) {
+                        matches++;
+                    }
+                }
+                if (matches > 0) {
                     matchingPoints.add(l);
                 }
             }
         }
 
+        // If no relevant points match the distinctive query keywords directly, reject hallucination
         if (matchingPoints.isEmpty()) {
-            return "Contexto autorizado insuficiente para responder a esta consulta. Como asistente interno de Riwi, únicamente tengo permitido responder sobre los temas discutidos en tus canales y conversaciones autorizadas.";
+            return NOT_FOUND_MESSAGE;
+        }
+
+        // Cap to maximum 2 points
+        if (matchingPoints.size() > 2) {
+            matchingPoints = matchingPoints.subList(0, 2);
         }
 
         StringBuilder sb = new StringBuilder();

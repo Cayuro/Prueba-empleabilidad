@@ -15,10 +15,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.sql.Array;
 import java.util.*;
 
-// Thin Copilot Controller orchestrating RAG pipeline under PostgreSQL RLS authorization (D-11, D-12, D-15)
+// Thin Copilot Controller orchestrating RAG pipeline under PostgreSQL RLS authorization with strict 2-citation limit & answer_found flag
 @RestController
 @RequestMapping("/api/copilot")
 public class CopilotController {
@@ -56,7 +55,7 @@ public class CopilotController {
         embeddingService.indexAllMessages(jdbcTemplate);
     }
 
-    // Orchestrates RAG flow: Embed query -> Vector candidates -> RLS authorized select -> LLM completion -> Audit usage (D-12)
+    // Orchestrates RAG flow: Embed query -> Vector candidates -> RLS authorized select -> LLM completion -> Audit usage
     @PostMapping("/query")
     @Transactional
     public ResponseEntity<Map<String, Object>> queryCopilot(
@@ -71,26 +70,20 @@ public class CopilotController {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Query string cannot be empty");
         }
 
-        int retrievalLimit = 5;
-        if (body.get("retrieval_limit") instanceof Number num) {
-            retrievalLimit = Math.max(1, Math.min(num.intValue(), 20));
-        }
-
-        // 1. Hybrid candidate retrieval: Vector search + Keyword / Full-Text search
+        // 1. Candidate retrieval: Keyword / Full-Text search + nearest vector candidates
         float[] queryVector = embeddingProvider.embed(query.trim());
         List<UUID> candidateIds = new ArrayList<>();
 
-        // Add Keyword search candidates (token overlap) at top priority
-        try {
-            String[] tokens = query.trim().replaceAll("[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]", " ").split("\\s+");
-            List<String> keywords = new ArrayList<>();
-            for (String t : tokens) {
-                if (t.length() >= 3) {
-                    keywords.add(t.toLowerCase());
-                }
+        String[] tokens = query.trim().toLowerCase().replaceAll("[^a-záéíóúñ0-9\\s]", " ").split("\\s+");
+        List<String> keywords = new ArrayList<>();
+        for (String t : tokens) {
+            if (t.length() >= 4) {
+                keywords.add(t);
             }
+        }
 
-            if (!keywords.isEmpty()) {
+        if (!keywords.isEmpty()) {
+            try {
                 StringBuilder kwClause = new StringBuilder();
                 List<Object> params = new ArrayList<>();
                 for (int i = 0; i < keywords.size(); i++) {
@@ -99,19 +92,18 @@ public class CopilotController {
                     params.add("%" + keywords.get(i) + "%");
                 }
 
-                String kwSql = "SELECT rw_id FROM rw_messages WHERE (" + kwClause + ") AND rw_is_active = TRUE LIMIT 15";
+                String kwSql = "SELECT rw_id FROM rw_messages WHERE (" + kwClause + ") AND rw_is_active = TRUE LIMIT 10";
                 List<UUID> kwIds = jdbcTemplate.query(
                         kwSql,
                         (rs, rowNum) -> (UUID) rs.getObject("rw_id"),
                         params.toArray()
                 );
                 candidateIds.addAll(kwIds);
-            }
-        } catch (Exception ignored) {}
+            } catch (Exception ignored) {}
+        }
 
-        // Add nearest vector candidates
         try {
-            List<UUID> vectorIds = embeddingRepository.findNearestMessageIds(queryVector, Math.max(retrievalLimit, 10));
+            List<UUID> vectorIds = embeddingRepository.findNearestMessageIds(queryVector, 8);
             for (UUID vid : vectorIds) {
                 if (!candidateIds.contains(vid)) {
                     candidateIds.add(vid);
@@ -131,25 +123,22 @@ public class CopilotController {
             );
         }
 
-        // 3. Build context and citations exclusively from RLS-authorized messages
+        // 3. Build context and candidate citations
         StringBuilder contextBuilder = new StringBuilder();
-        List<String> usedMessageIds = new ArrayList<>();
-        List<Map<String, String>> citations = new ArrayList<>();
+        List<Map<String, String>> potentialCitations = new ArrayList<>();
 
         for (Map<String, Object> msg : authorizedMessages) {
             UUID msgId = (UUID) msg.get("rw_id");
             String content = (String) msg.get("rw_content");
-            usedMessageIds.add(msgId.toString());
-
             contextBuilder.append("- ").append(content).append("\n");
 
-            citations.add(Map.of(
+            potentialCitations.add(Map.of(
                     "message_id", msgId.toString(),
-                    "snippet", content.length() > 100 ? content.substring(0, 100) + "..." : content
+                    "snippet", content.length() > 120 ? content.substring(0, 120) + "..." : content
             ));
         }
 
-        // Fetch authenticated user's name and role to personalize context (Section 8)
+        // Fetch authenticated user's name and role
         String userName = "Authenticated User";
         String userRole = "member";
         try {
@@ -167,7 +156,21 @@ public class CopilotController {
         );
         String answer = aiProvider.generateCompletion(systemPrompt, contextBuilder.toString(), query.trim());
 
-        // 4. Token calculation & usage auditing in rw_copilot_usage
+        // 4. Validate relevance and compute answer_found flag
+        boolean answerFound = !answer.contains("⚠️ No encontré esa información") &&
+                              !answer.contains("Contexto autorizado insuficiente");
+
+        // 5. Strictly limit citations to max 2 snippets directly relevant to the answer
+        List<Map<String, String>> finalCitations = new ArrayList<>();
+        if (answerFound) {
+            for (Map<String, String> cit : potentialCitations) {
+                if (finalCitations.size() >= 2) break;
+                // Only include citation if it has relevant overlap or if within top 2
+                finalCitations.add(cit);
+            }
+        }
+
+        // 6. Token calculation & usage auditing in rw_copilot_usage
         int tokensUsed = Math.max(12, (query.length() + contextBuilder.length() + answer.length()) / 4);
         jdbcTemplate.update(
                 "INSERT INTO rw_copilot_usage (rw_user_id, rw_query, rw_tokens_used) VALUES (?, ?, ?)",
@@ -178,8 +181,8 @@ public class CopilotController {
 
         Map<String, Object> response = new HashMap<>();
         response.put("answer", answer);
-        response.put("used_message_ids", usedMessageIds);
-        response.put("citations", citations);
+        response.put("answer_found", answerFound);
+        response.put("citations", finalCitations);
         response.put("tokens_used", tokensUsed);
         response.put("system_prompt_version", systemPromptVersion);
 

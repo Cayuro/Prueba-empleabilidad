@@ -34,6 +34,11 @@ export const translations = {
     errorChannels: "Error al cargar conversaciones",
     publicBadge: "Público",
     privateBadge: "Privado",
+    toggleChannels: "Canales",
+    toggleCopilot: "Copiloto IA",
+    searchMessages: "Buscar mensajes...",
+    searchResults: "Resultados de búsqueda",
+    noSearchResults: "No se encontraron mensajes",
     
     // Zone 2: Chat & Messages
     selectChannelPrompt: "Selecciona un canal de la izquierda para comenzar",
@@ -134,6 +139,11 @@ export const translations = {
     errorChannels: "Error loading conversations",
     publicBadge: "Public",
     privateBadge: "Private",
+    toggleChannels: "Channels",
+    toggleCopilot: "AI Copilot",
+    searchMessages: "Search messages...",
+    searchResults: "Search Results",
+    noSearchResults: "No messages found",
     
     // Zone 2: Chat & Messages
     selectChannelPrompt: "Select a channel on the left to start chatting",

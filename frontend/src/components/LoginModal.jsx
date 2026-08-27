@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { useAuth } from '../context/AuthContext';
-import { Lock, Mail, User, ArrowRight, Info, CheckCircle2 } from 'lucide-react';
+import { useAuth, DEMO_USERS } from '../context/AuthContext';
+import { Lock, Mail, User, ArrowRight, Info, Users, Shield, Check } from 'lucide-react';
 
 export default function LoginModal() {
   const { t } = useLanguage();
@@ -36,26 +36,32 @@ export default function LoginModal() {
     setIsLoading(false);
   };
 
-  // Helper to fill credentials for testing
-  const fillCredentials = (userEmail, userPass) => {
-    setMode('login');
-    setEmail(userEmail);
-    setPassword(userPass);
+  // Quick 1-click login for demo users
+  const handleQuickLogin = async (demoEmail, demoPass) => {
+    setIsLoading(true);
+    setError('');
+    setEmail(demoEmail);
+    setPassword(demoPass);
+    const res = await login(demoEmail, demoPass);
+    if (!res.success) {
+      setError(res.error || t.invalidCredentials);
+    }
+    setIsLoading(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-light-bg dark:bg-dark-bg select-none transition-colors duration-200">
-      <div className="w-full max-w-md bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-2xl shadow-2xl p-6 space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-light-bg dark:bg-dark-bg select-none transition-colors duration-200 overflow-y-auto">
+      <div className="w-full max-w-lg bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-2xl shadow-2xl p-5 space-y-4 my-8">
         {/* Riwi Brand Logo: White background with Riwi Purple #6b5cff */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-white border border-neutral-200 items-center justify-center font-black text-[#6b5cff] text-3xl shadow-lg ring-4 ring-[#6b5cff]/10">
+        <div className="text-center space-y-1.5">
+          <div className="inline-flex w-12 h-12 rounded-2xl bg-white border border-neutral-200 items-center justify-center font-black text-[#6b5cff] text-2xl shadow-lg ring-4 ring-[#6b5cff]/10">
             R
           </div>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-light-text dark:text-dark-text">
+            <h2 className="text-lg font-black tracking-tight text-light-text dark:text-dark-text">
               {mode === 'login' ? t.loginTitle : t.registerTitle}
             </h2>
-            <p className="text-xs text-light-muted dark:text-dark-muted mt-0.5">
+            <p className="text-xs text-light-muted dark:text-dark-muted">
               {mode === 'login' ? t.loginSubtitle : t.registerSubtitle}
             </p>
           </div>
@@ -69,7 +75,7 @@ export default function LoginModal() {
               setMode('login');
               setError('');
             }}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
               mode === 'login'
                 ? 'bg-light-card dark:bg-dark-card text-light-text dark:text-dark-text shadow-sm'
                 : 'text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
@@ -83,7 +89,7 @@ export default function LoginModal() {
               setMode('register');
               setError('');
             }}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
               mode === 'register'
                 ? 'bg-light-card dark:bg-dark-card text-light-text dark:text-dark-text shadow-sm'
                 : 'text-light-muted dark:text-dark-muted hover:text-light-text dark:hover:text-dark-text'
@@ -94,9 +100,9 @@ export default function LoginModal() {
         </div>
 
         {/* Auth Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {error && (
-            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-semibold text-center">
+            <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-semibold text-center">
               {error}
             </div>
           )}
@@ -108,14 +114,14 @@ export default function LoginModal() {
                 {t.nameLabel}
               </label>
               <div className="relative">
-                <User size={15} className="absolute left-3 top-2.5 text-light-muted dark:text-dark-muted" />
+                <User size={14} className="absolute left-3 top-2.5 text-light-muted dark:text-dark-muted" />
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={t.namePlaceholder}
                   required
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-light-accent dark:focus:border-dark-accent transition-colors"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
                 />
               </div>
             </div>
@@ -127,14 +133,14 @@ export default function LoginModal() {
               {t.emailLabel}
             </label>
             <div className="relative">
-              <Mail size={15} className="absolute left-3 top-2.5 text-light-muted dark:text-dark-muted" />
+              <Mail size={14} className="absolute left-3 top-2.5 text-light-muted dark:text-dark-muted" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="user@riwi.io"
                 required
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-light-accent dark:focus:border-dark-accent transition-colors"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
               />
             </div>
           </div>
@@ -145,7 +151,7 @@ export default function LoginModal() {
               {t.passwordLabel}
             </label>
             <div className="relative">
-              <Lock size={15} className="absolute left-3 top-2.5 text-light-muted dark:text-dark-muted" />
+              <Lock size={14} className="absolute left-3 top-2.5 text-light-muted dark:text-dark-muted" />
               <input
                 type="password"
                 value={password}
@@ -153,7 +159,7 @@ export default function LoginModal() {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-light-accent dark:focus:border-dark-accent transition-colors"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border text-light-text dark:text-dark-text focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
               />
             </div>
           </div>
@@ -161,7 +167,7 @@ export default function LoginModal() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-2.5 rounded-lg bg-light-accent dark:bg-dark-accent text-white dark:text-black font-extrabold text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center space-x-2 shadow-md cursor-pointer"
+            className="w-full py-2 rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-black font-extrabold text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center space-x-2 shadow-md cursor-pointer"
           >
             <span>
               {isLoading
@@ -172,29 +178,46 @@ export default function LoginModal() {
           </button>
         </form>
 
-        {/* Demo Credentials Guide Helper */}
-        <div className="pt-2.5 border-t border-light-border dark:border-dark-border space-y-1.5">
-          <div className="flex items-center space-x-1 text-[10px] font-bold text-light-muted dark:text-dark-muted">
-            <Info size={12} className="text-[#6b5cff]" />
-            <span>Credenciales de prueba disponibles:</span>
+        {/* 10 Demo Users Fast Selector */}
+        <div className="pt-3 border-t border-light-border dark:border-dark-border space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5 text-xs font-bold text-light-text dark:text-dark-text">
+              <Users size={14} className="text-emerald-500" />
+              <span>Selecciona un usuario de prueba (10 Cuentas):</span>
+            </div>
+            <span className="text-[10px] text-light-muted dark:text-dark-muted">Click para ingresar</span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-            <button
-              type="button"
-              onClick={() => fillCredentials('admin@riwi.io', 'RiwiAdmin2026!')}
-              className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border hover:border-[#6b5cff] text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-light-text dark:text-dark-text text-[11px]">Carlos (Admin)</div>
-              <div className="text-[10px] text-light-muted dark:text-dark-muted truncate">admin@riwi.io</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => fillCredentials('valeria.dev@riwi.io', 'RiwiDev2026!')}
-              className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-light-border dark:border-dark-border hover:border-[#6b5cff] text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-light-text dark:text-dark-text text-[11px]">Valeria (Dev)</div>
-              <div className="text-[10px] text-light-muted dark:text-dark-muted truncate">valeria.dev@riwi.io</div>
-            </button>
+
+          <div className="max-h-56 overflow-y-auto space-y-1 pr-1 divide-y divide-light-border/40 dark:divide-dark-border/40 border border-light-border/60 dark:border-dark-border/60 rounded-xl bg-neutral-50/50 dark:bg-neutral-900/50 p-1">
+            {DEMO_USERS.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => handleQuickLogin(u.email, u.password)}
+                className="w-full p-2 text-left rounded-lg hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="min-w-0 flex-1 pr-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-xs text-light-text dark:text-dark-text group-hover:text-emerald-600 dark:group-hover:text-emerald-400 truncate">
+                      {u.name}
+                    </span>
+                    <span className={`px-1.5 py-0.2 text-[9px] font-extrabold rounded uppercase ${
+                      u.role === 'admin'
+                        ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
+                        : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
+                    }`}>
+                      {u.role}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-light-muted dark:text-dark-muted truncate">
+                    {u.email} • <span className="text-neutral-500 dark:text-neutral-400">{u.description}</span>
+                  </div>
+                </div>
+                <div className="w-6 h-6 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <ArrowRight size={12} />
+                </div>
+              </button>
+            ))}
           </div>
         </div>
       </div>

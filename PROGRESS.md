@@ -18,6 +18,7 @@
 | **Fase 5 — Frontend UI (React + Tailwind)** | `frontend_developer` | 🟢 Completado | 100% | Build completado sin errores (`npm run build`). 3 zonas UI, paleta Naranja/Negro, i18n ES/EN, registro de usuarios y WebSocket STOMP. |
 | **Fase 6 — QA, Integración & Entregables** | `qa_integrator` | 🟢 Completado | 100% | 8/8 tests de integración pasando en PostgreSQL real, `README.md`, `ARCHITECTURE.md`, `ER_MODEL.md` y Swagger UI. |
 | **Fase 7 — Hardening RLS, Gemini AI & Diagnóstico** | `core_team` | 🟢 Completado | 100% | Rol `rw_app` con `NOBYPASSRLS`, vista `rw_vw_user_conversations` sincronizada con alias completos, guardas de WebSocket JWT, 12/12 pruebas E2E superadas. |
+| **Fase 8 — Interfaz WhatsApp, Invitaciones & Supervisión** | `core_team` | 🟢 Completado | 100% | UI WhatsApp con burbujas/checks, de-duplicación atómica WebSocket/REST, modal de invitación a canales privados, RLS admin global `rw_fn_is_admin`, decisiones D-16 a D-21 en `DECISIONS.md`. |
 
 ---
 

@@ -747,3 +747,155 @@ El backend tiene cuatro componentes de infraestructura intercambiables de forma 
 3. `AiProvider` — seleccionado por variable de entorno `AI_PROVIDER`.
 4. `VectorStore` — abstracción del motor de búsqueda vectorial (coincide con `EmbeddingRepository` en MVP).
 
+---
+
+## D-16 — Proveedor de IA Google Gemini con Fallback Contextual Seguro
+
+**Contexto:**  
+El sistema eliminó completamente dependencias de OpenAI para utilizar Google Gemini (`gemini-1.5-flash` / `gemini-1.5-pro`). Se requiere garantizar que fallos de red, cuotas o credenciales externas jamás expongan errores técnicos, modelos o URLs al usuario final.
+
+**Decisión:**  
+`GeminiProvider.java` implementa `AiProvider`. Incluye normalización automática del identificador del modelo y un mecanismo de síntesis contextual de fallback seguro en servidor:
+- Si la API externa de Gemini responde exitosamente, devuelve la respuesta generada.
+- Si la API externa falla (HTTP 404, 403, 429, timeout o credencial no configurada), el servidor intercepta el error y genera una síntesis limpia y profesional basada en los puntos autorizados recuperados de PostgreSQL RLS.
+- En ningún caso se propagan códigos HTTP, identificadores de modelos (`models/gemini...`) o stack traces al frontend.
+
+**Alternativa descartada:**  
+Propagar mensajes de error crudos de la API externa al usuario.
+
+**Razón:**  
+Filtrar detalles técnicos de APIs externas es una vulnerabilidad de seguridad e información (Information Leakage). La experiencia de usuario debe mantenerse funcional, profesional y contextualizada a partir de los datos que la base de datos ya autorizó y recuperó.
+
+---
+
+## D-17 — Orden Cronológico Ascendente en UI y Paginación Keyset Inversa
+
+**Contexto:**  
+En PostgreSQL, la consulta de Keyset Pagination más eficiente para obtener los últimos N mensajes se ejecuta con `ORDER BY rw_created_at DESC, rw_id DESC LIMIT N`. Si el frontend renderiza el array recibido directamente, los mensajes más recientes aparecen arriba y los más antiguos abajo, invirtiendo la lectura natural de un chat.
+
+**Decisión:**  
+1. El backend entrega la página en orden descendente (`rw_created_at DESC`) para aprovechar el índice B-Tree Keyset.
+2. Al recibir la respuesta en el frontend, el array se invierte inmediatamente (`[...history].reverse()`) para mostrar los mensajes cronológicamente de arriba (antiguos) a abajo (nuevos), desplazando el scroll automáticamente al final.
+3. Al paginar hacia atrás (mensajes anteriores), el cursor toma el primer elemento visible `messages[0]` (`(cursor_created_at, cursor_id)`), invierte el nuevo lote y lo antepone al inicio de la lista (`[...olderAsc, ...prev]`).
+
+**Alternativa descartada:**  
+Hacer subqueries `SELECT * FROM (SELECT ... ORDER BY DESC LIMIT N) ORDER BY ASC` en la base de datos para cada petición.
+
+**Razón:**  
+Mantener la query del backend simple y pura en DESC maximiza el uso del índice sin procesamiento adicional en PostgreSQL. La inversión en memoria en React tiene costo computacional despreciable O(N) para 30 elementos.
+
+---
+
+## D-18 — Aislamiento Atómico de Estado de Sesión y Canal
+
+**Contexto:**  
+Al cambiar de usuario (logout/login) o al cambiar de canal activo, existía riesgo de que mensajes o historiales de la conversación previa se mantuvieran en pantalla mientras cargaba la nueva petición de red.
+
+**Decisión:**  
+1. **Cambio de Canal:** `App.jsx` ejecuta `setMessages([])` y `setIsLoadingHistory(true)` inmediatamente al seleccionar un nuevo canal, antes de disparar la petición HTTP.
+2. **Cambio de Sesión:** `App.jsx` vigila el cambio de `user?.id`. Si el ID del usuario cambia o la sesión se cierra, purga atómicamente todos los estados en memoria (`copilotHistory = []`, `messages = []`, `channels = []`, `activeChannel = null`, `usageStats = null`) y cierra el socket WebSocket.
+
+**Alternativa descartada:**  
+Permitir que el estado viejo permanezca como "placeholder" mientras responde la API.
+
+**Razón:**  
+El aislamiento estricto de datos es un requerimiento mandatorio de privacidad y Row Level Security (RLS). Ningún usuario debe percibir visualmente mensajes de otro usuario o de otro canal durante transiciones de interfaz.
+
+---
+
+## D-19 — De-duplicación Atómica de Mensajes Optimistas vs WebSocket
+
+**Contexto:**  
+Al enviar un mensaje en el frontend, se agrega una entrada optimista provisional (`status: 'pending'`, `rw_id: 'temp_...'`). El backend inserta en PostgreSQL y casi simultáneamente emite el mensaje confirmado por WebSocket STOMP (`/topic/channels/{channelId}`). Si el mensaje de WebSocket llega antes de que la promesa HTTP resuelva, se producía una duplicación visual temporal del mensaje.
+
+**Decisión:**  
+1. En el listener de WebSocket: se busca si existe un mensaje con `status === 'pending'`, mismo `rw_content` y mismo `rw_author_id`. Si existe, se reemplaza en el mismo índice con el mensaje confirmado (`status: 'sent'`).
+2. En el callback de `api.sendMessage`: se verifica si el ID real ya fue insertado por el WebSocket; si es así, se remueve el temporal residual sin volver a agregarlo.
+
+**Alternativa descartada:**  
+Desactivar la UI optimista y esperar siempre a que responda el WebSocket o HTTP.
+
+**Razón:**  
+La interfaz optimista provee respuesta táctil inmediata al usuario (estilo WhatsApp). La reconciliación bidireccional por contenido y autor elimina cualquier race condition entre el broadcast del socket y la respuesta REST.
+
+---
+
+## D-20 — Visibilidad Global de Supervisión para Administradores de Plataforma
+
+**Contexto:**  
+Los administradores de la organización (`admin@riwi.io`, `alejandro.lead@riwi.io`) requieren supervisar y auditar todas las conversaciones de la plataforma (incluyendo canales privados) para control de cumplimiento, retención de talento y auditoría interna.
+
+**Decisión:**  
+1. Se creó la función helper `rw_fn_is_admin(p_user_id UUID)` en PostgreSQL con `SECURITY DEFINER`.
+2. Se actualizaron las políticas RLS (`rw_channels_select/update`, `rw_messages_select`, `rw_channel_members_select/insert/update`, `rw_vw_user_conversations` y `rw_fn_search_authorized_messages`) para incluir:
+   ```sql
+   OR rw_fn_is_admin(NULLIF(current_setting('app.current_user_id', true), '')::uuid)
+   ```
+3. El interceptor de WebSocket `SubscriptionInterceptor.java` valida que los administradores tengan autorización automática para suscribirse a cualquier topic de canal.
+
+**Alternativa descartada:**  
+Dar privilege `BYPASSRLS` al usuario de base de datos `rw_app`.
+
+**Razón:**  
+El usuario de base de datos `rw_app` debe mantener `NOBYPASSRLS` estricto (D-09, D-13). La autorización del administrador se evalúa a nivel de fila mediante políticas RLS con `app.current_user_id`, preservando el principio de menor privilegio y la separación entre la identidad del sistema y la identidad del usuario.
+
+---
+
+## D-21 — Invitación Dinámica a Grupos Privados y Permisos de Gestión
+
+**Contexto:**  
+En canales privados creados por usuarios (ej. `#proyecto-frontend`), se requiere permitir que los creadores y administradores del canal inviten a otros compañeros de cohorte/organización de forma ágil, visualizándose inmediatamente en sus listas de chat.
+
+**Decisión:**  
+1. Endpoints REST `GET /api/channels/{channelId}/members` y `POST /api/channels/{channelId}/members`.
+2. Al crear un canal, el creador se registra en `rw_channel_members` con `rw_role = 'admin'` para ese canal.
+3. La política RLS `rw_channel_members_insert` permite la inserción de nuevos miembros si el solicitante es admin del canal, miembro del canal o admin del sistema.
+4. Si un usuario ya había pertenecido y fue retirado, la inserción realiza un `ON CONFLICT DO UPDATE SET rw_is_active = TRUE, rw_deleted_at = NULL` reactivando la membresía de forma segura y consistente con D-02.
+5. El frontend ofrece un modal interactivo con avatares y buscador de usuarios para agregar miembros con un solo clic.
+
+**Alternativa descartada:**  
+Manejo de membresías mediante edición directa de tablas sin validación de RLS ni reactivación de soft delete.
+
+**Razón:**  
+Garantiza integridad referencial, respeto al histórico de miembros y sincronización en tiempo real de las conversaciones autorizadas.
+
+---
+
+## D-22 — Paneles Colapsables y Búsqueda Full-Text Integrada
+
+**Contexto:**  
+En pantallas de escritorio o móviles, una interfaz fija de 3 columnas puede saturar el espacio de trabajo. Los usuarios requieren concentrarse exclusivamente en el chat (modo pantalla completa), ocultar o mostrar la lista de canales (Zona 1) y el asistente Copilot IA (Zona 3) según su necesidad, además de poder buscar rápidamente dentro del contenido de todos sus mensajes autorizados.
+
+**Decisión:**  
+1. **Paneles Colapsables:** Estados booleanos reactivos `showChannels` y `showCopilot` controlados desde el header mediante botones con iconos (`PanelLeft`, `Sparkles`). El área central de chat (`ZoneChat`) usa `flex-1` expandiéndose dinámicamente hasta el 100% del ancho disponible cuando ambos paneles laterales están ocultos.
+2. **Pestaña de Búsqueda Full-Text:** Se agregó la pestaña **"Mensajes"** en `ZoneConversations.jsx` que consume el endpoint `GET /api/messages/search?q=` de PostgreSQL con resaltado `ts_headline`, permitiendo al usuario buscar términos en todos sus canales autorizados bajo RLS y saltar directamente al canal y mensaje seleccionado.
+
+**Alternativa descartada:**  
+Layout estático con columnas de ancho fijo o modales flotantes intrusivos.
+
+**Razón:**  
+Brinda máxima ergonomía, adaptabilidad multidispositivo y acceso inmediato tanto a la búsqueda de canales como a la búsqueda profunda de mensajes históricos.
+
+---
+
+## D-23 — Guardrails de Relevancia RAG, Límite Estricto de 2 Citas y Flag `answer_found`
+
+**Contexto:**  
+En sistemas RAG con retrieval híbrido, si el modelo recibe múltiples fragmentos candidatos o si la consulta del usuario no tiene respuesta en el contexto autorizado (preguntas matemáticas, generales o sobre conversaciones no autorizadas), existía el riesgo de que la IA alucinara respuestas combinando fragmentos irrelevantes o devolviera una cantidad excesiva de citas (más de 5).
+
+**Decisión:**  
+1. **Límite Estricto de Citas:** El backend `CopilotController.java` acota rigurosamente las citas devueltas a un **máximo de 2 fragmentos** (`Math.min(2, citations.size())`), seleccionando exclusivamente los fragmentos pertinentes que respaldan la respuesta generada.
+2. **Guardrail Anti-Alucinación y Validación de Relevancia:** Antes de generar respuesta, el motor evalúa si los fragmentos autorizados contienen información que responda directamente la pregunta. Si no hay correspondencia directa (o se solicitan operaciones matemáticas/generales fuera de contexto), el sistema responde invariablemente:  
+   `"⚠️ No encontré esa información en los canales autorizados."` con `citations = []`.
+3. **Flag Booleano `answer_found`:** El endpoint `/api/copilot/query` expone el atributo `answer_found (boolean)`. El frontend en `ZoneCopilot.jsx` detecta este indicador y renderiza las respuestas no encontradas en un cuadro de advertencia destacado con icono `AlertTriangle`, evitando mostrar citas erróneas.
+4. **Flujo Cronológico:** Las preguntas y respuestas del Copiloto se agregan al final de la lista con auto-scroll fluido, manteniendo la naturalidad de lectura secuencial.
+
+**Alternativa descartada:**  
+Permitir que el LLM intente responder libremente con conocimientos generales o devolver todas las citas recuperadas en la búsqueda vectorial sin post-filtrado.
+
+**Razón:**  
+Garantiza integridad corporativa, evita desinformación o alucinaciones y refuerza el aislamiento de seguridad RLS ante consultas no autorizadas.
+
+
+
+

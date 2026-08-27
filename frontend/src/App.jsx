@@ -288,11 +288,13 @@ function MainApp() {
       const newEntry = {
         query: queryText,
         answer: result.answer,
+        answer_found: result.answer_found !== undefined ? result.answer_found : !result.answer?.includes('⚠️ No encontré esa información'),
         citations: result.citations || [],
         tokens_used: result.tokens_used || 0,
         system_prompt_version: result.system_prompt_version || 1,
       };
-      setCopilotHistory((prev) => [newEntry, ...prev]);
+      // Append to the bottom so questions appear in natural chronological order
+      setCopilotHistory((prev) => [...prev, newEntry]);
 
       // Update token usage metrics dynamically
       const updatedStats = await api.getCopilotUsage(token);
@@ -313,30 +315,42 @@ function MainApp() {
     }, 4000);
   };
 
+  // Collapsible zones state
+  const [showChannels, setShowChannels] = useState(true);
+  const [showCopilot, setShowCopilot] = useState(true);
+
   if (!isAuthenticated) {
     return <LoginModal />;
   }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text transition-colors duration-200">
-      {/* Top Application Header */}
-      <Header onOpenProfile={() => setIsProfileOpen(true)} />
+      {/* Top Application Header with zone toggles */}
+      <Header
+        onOpenProfile={() => setIsProfileOpen(true)}
+        showChannels={showChannels}
+        onToggleChannels={() => setShowChannels((prev) => !prev)}
+        showCopilot={showCopilot}
+        onToggleCopilot={() => setShowCopilot((prev) => !prev)}
+      />
 
-      {/* 3 Main Zones Layout */}
-      <main className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden">
-        {/* Zone 1: Conversations & Channels List (3 cols) */}
-        <section className="md:col-span-3 lg:col-span-3 h-full overflow-hidden">
-          <ZoneConversations
-            channels={channels}
-            activeChannelId={activeChannel?.rw_id}
-            onSelectChannel={setActiveChannel}
-            onCreateChannel={handleCreateChannel}
-            isLoading={isLoadingChannels}
-          />
-        </section>
+      {/* Dynamic Collapsible 3-Zone Layout */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Zone 1: Conversations & Channels List */}
+        {showChannels && (
+          <section className="w-80 md:w-80 lg:w-84 shrink-0 h-full overflow-hidden border-r border-light-border dark:border-dark-border transition-all duration-200">
+            <ZoneConversations
+              channels={channels}
+              activeChannelId={activeChannel?.rw_id}
+              onSelectChannel={setActiveChannel}
+              onCreateChannel={handleCreateChannel}
+              isLoading={isLoadingChannels}
+            />
+          </section>
+        )}
 
-        {/* Zone 2: Chat Stream & Message History (5-6 cols) */}
-        <section className="md:col-span-5 lg:col-span-5 h-full overflow-hidden flex flex-col">
+        {/* Zone 2: Chat Stream & Message History (Expands dynamically to take all remaining space) */}
+        <section className="flex-1 min-w-0 h-full overflow-hidden flex flex-col">
           <ZoneChat
             activeChannel={activeChannel}
             messages={messages}
@@ -350,16 +364,18 @@ function MainApp() {
           />
         </section>
 
-        {/* Zone 3: Copilot AI Assistant Panel (4 cols) */}
-        <section className="md:col-span-4 lg:col-span-4 h-full overflow-hidden">
-          <ZoneCopilot
-            onSelectCitation={handleSelectCitation}
-            onQueryCopilot={handleQueryCopilot}
-            copilotHistory={copilotHistory}
-            usageStats={usageStats}
-            isQuerying={isQueryingCopilot}
-          />
-        </section>
+        {/* Zone 3: Copilot AI Assistant Panel */}
+        {showCopilot && (
+          <section className="w-80 md:w-96 lg:w-[400px] shrink-0 h-full overflow-hidden border-l border-light-border dark:border-dark-border transition-all duration-200">
+            <ZoneCopilot
+              onSelectCitation={handleSelectCitation}
+              onQueryCopilot={handleQueryCopilot}
+              copilotHistory={copilotHistory}
+              usageStats={usageStats}
+              isQuerying={isQueryingCopilot}
+            />
+          </section>
+        )}
       </main>
 
       {/* Zone 4: User Profile & Session Modal */}
