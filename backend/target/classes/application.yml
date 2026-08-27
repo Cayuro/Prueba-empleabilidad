@@ -1,0 +1,42 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: riwi-messaging-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_riwi_alpha}
+    username: ${DB_APP_USER:${DB_USER:rw_app}}
+    password: ${DB_APP_PASSWORD:${DB_PASSWORD:changeme}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+
+jwt:
+  secret: ${JWT_SECRET:changeme_min_32_characters_secret_key_riwi_2026}
+  expiration-minutes: ${JWT_EXPIRY_MINUTES:15}
+  refresh-expiration-days: ${REFRESH_TOKEN_EXPIRY_DAYS:30}
+
+ai:
+  provider: ${AI_PROVIDER:mock}
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:gpt-4o}
+  embedding:
+    provider: ${EMBEDDING_PROVIDER:mock}
+    model: ${OPENAI_EMBEDDING_MODEL:text-embedding-ada-002}
+
+copilot:
+  system-prompt-version: ${SYSTEM_PROMPT_VERSION:1}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
